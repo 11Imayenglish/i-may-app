@@ -1032,24 +1032,31 @@ function ArticleDetail({ article, setView }) {
 /* ------------------------------------------------------------------ */
 /*  Student accounts — signup, login, and the pending-approval gate    */
 /* ------------------------------------------------------------------ */
-function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup, onLogin }) {
+function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup, onLogin, onResetRequest }) {
   const { cfg, colors, serif, sans, logoSrc } = useTheme();
   const isSignup = mode === "signup";
+  const isReset = mode === "reset";
+  const title = isReset ? "Recupera tu contraseña" : isSignup ? "Crea tu cuenta de alumno" : "Inicia sesión";
+  const subtitle = isReset
+    ? "Introduce tu email y te enviaremos un enlace para elegir una contraseña nueva."
+    : isSignup
+    ? "Después de registrarte, un administrador debe darte acceso antes de que puedas ver el contenido."
+    : "Introduce tus datos para continuar con tu formación.";
+  const onSubmit = isReset ? onResetRequest : isSignup ? onSignup : onLogin;
+
   return (
     <div className="max-w-sm mx-auto px-6 py-20">
       <div className="flex flex-col items-center text-center mb-8">
         {cfg.showLogoImage && <img src={logoSrc} alt={cfg.siteName} className="h-14 w-auto mb-6" />}
         <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-1">
-          {isSignup ? "Crea tu cuenta de alumno" : "Inicia sesión"}
+          {title}
         </h2>
         <p style={{ ...sans, color: "#5B6472" }} className="text-sm">
-          {isSignup
-            ? "Después de registrarte, un administrador debe darte acceso antes de que puedas ver el contenido."
-            : "Introduce tus datos para continuar con tu formación."}
+          {subtitle}
         </p>
       </div>
 
-      <form onSubmit={isSignup ? onSignup : onLogin} className="space-y-3">
+      <form onSubmit={onSubmit} className="space-y-3">
         {isSignup && (
           <input
             value={form.name}
@@ -1067,14 +1074,16 @@ function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup,
           className="w-full border px-3 py-2 text-sm"
           style={{ borderColor: colors.line }}
         />
-        <input
-          type="password"
-          value={form.password}
-          onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
-          placeholder="Contraseña"
-          className="w-full border px-3 py-2 text-sm"
-          style={{ borderColor: colors.line }}
-        />
+        {!isReset && (
+          <input
+            type="password"
+            value={form.password}
+            onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
+            placeholder="Contraseña"
+            className="w-full border px-3 py-2 text-sm"
+            style={{ borderColor: colors.line }}
+          />
+        )}
         {isSignup && (
           <input
             type="password"
@@ -1101,18 +1110,106 @@ function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup,
           className="w-full px-4 py-2.5 text-sm font-semibold rounded-sm disabled:opacity-50"
           style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}
         >
-          {busy ? "Un momento…" : isSignup ? "Crear cuenta" : "Entrar"}
+          {busy ? "Un momento…" : isReset ? "Enviar enlace" : isSignup ? "Crear cuenta" : "Entrar"}
         </button>
       </form>
 
-      <button
-        onClick={() => setMode(isSignup ? "login" : "signup")}
-        className="w-full text-center text-xs underline mt-4"
-        style={{ ...sans, color: "#5B6472" }}
-      >
-        {isSignup ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate"}
-      </button>
+      {isReset ? (
+        <button
+          onClick={() => setMode("login")}
+          className="w-full text-center text-xs underline mt-4"
+          style={{ ...sans, color: "#5B6472" }}
+        >
+          Volver a iniciar sesión
+        </button>
+      ) : (
+        <>
+          <button
+            onClick={() => setMode(isSignup ? "login" : "signup")}
+            className="w-full text-center text-xs underline mt-4"
+            style={{ ...sans, color: "#5B6472" }}
+          >
+            {isSignup ? "¿Ya tienes cuenta? Inicia sesión" : "¿No tienes cuenta? Regístrate"}
+          </button>
+          {!isSignup && (
+            <button
+              onClick={() => setMode("reset")}
+              className="w-full text-center text-xs underline mt-2"
+              style={{ ...sans, color: "#5B6472" }}
+            >
+              ¿Olvidaste tu contraseña?
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
 
+function PasswordRecoveryScreen({ onDone }) {
+  const { cfg, colors, serif, sans, logoSrc } = useTheme();
+  const [next, setNext] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
+    if (next.length < 6) { setError("Usa una contraseña de al menos 6 caracteres."); return; }
+    if (next !== confirm) { setError("Las dos contraseñas no coinciden."); return; }
+    setBusy(true);
+    try {
+      await api.updatePassword(next);
+      onDone();
+    } catch (err) {
+      setError(authErrorMessage(err));
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="max-w-sm mx-auto px-6 py-20">
+      <div className="flex flex-col items-center text-center mb-8">
+        {cfg.showLogoImage && <img src={logoSrc} alt={cfg.siteName} className="h-14 w-auto mb-6" />}
+        <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-1">
+          Elige una contraseña nueva
+        </h2>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm">
+          Ya has confirmado el enlace del email. Escribe tu nueva contraseña para terminar.
+        </p>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <input
+          type="password"
+          value={next}
+          onChange={(e) => setNext(e.target.value)}
+          placeholder="Nueva contraseña"
+          className="w-full border px-3 py-2 text-sm"
+          style={{ borderColor: colors.line }}
+        />
+        <input
+          type="password"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          placeholder="Confirmar contraseña"
+          className="w-full border px-3 py-2 text-sm"
+          style={{ borderColor: colors.line }}
+        />
+        {error && (
+          <p style={{ ...sans, color: colors.error }} className="text-xs">
+            {error}
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={busy}
+          className="w-full px-4 py-2.5 text-sm font-semibold rounded-sm disabled:opacity-50"
+          style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}
+        >
+          {busy ? "Un momento…" : "Guardar contraseña"}
+        </button>
+      </form>
     </div>
   );
 }
@@ -1211,6 +1308,24 @@ function StudentAuthGate({ profile, onLogout, children }) {
     setBusy(false);
   }
 
+  async function handleResetRequest(e) {
+    e.preventDefault();
+    setError("");
+    setInfo("");
+    if (!form.email.trim()) {
+      setError("Escribe tu email.");
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.requestPasswordReset(form.email.trim().toLowerCase());
+      setInfo("Si existe una cuenta con ese email, te hemos enviado un enlace para cambiar la contraseña.");
+    } catch (err) {
+      setError(authErrorMessage(err));
+    }
+    setBusy(false);
+  }
+
   if (profile) {
     if (profile.status === "approved") return children;
     if (profile.status === "rejected") return <RejectedScreen user={profile} onLogout={onLogout} />;
@@ -1218,7 +1333,18 @@ function StudentAuthGate({ profile, onLogout, children }) {
   }
 
   return (
-    <AuthScreen mode={mode} setMode={setMode} form={form} setForm={setForm} error={error} info={info} busy={busy} onSignup={handleSignup} onLogin={handleLogin} />
+    <AuthScreen
+      mode={mode}
+      setMode={setMode}
+      form={form}
+      setForm={setForm}
+      error={error}
+      info={info}
+      busy={busy}
+      onSignup={handleSignup}
+      onLogin={handleLogin}
+      onResetRequest={handleResetRequest}
+    />
   );
 }
 
@@ -2886,6 +3012,7 @@ export default function App() {
   const [submissions, setSubmissions] = useState([]);
   const [profile, setProfile] = useState(null);
   const [authReady, setAuthReady] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
   const [cfg, setCfg] = useState(DEFAULT_CONFIG);
   const [customLogo, setCustomLogo] = useState(null);
   const [view, setView] = useState({ name: "home" });
@@ -2912,6 +3039,7 @@ export default function App() {
 
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (_event === "PASSWORD_RECOVERY") setRecoveryMode(true);
       if (!session) {
         setProfile(null);
         setSubmissions([]);
@@ -2992,6 +3120,16 @@ export default function App() {
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cfg.colors.bg }}>
         <img src={customLogo || LOGO_SRC} alt={cfg.siteName} className="h-14 w-auto opacity-80" />
       </div>
+    );
+  }
+
+  if (recoveryMode) {
+    return (
+      <ThemeContext.Provider value={theme}>
+        <div className="min-h-screen" style={{ backgroundColor: cfg.colors.bg, ...theme.sans }}>
+          <PasswordRecoveryScreen onDone={() => setRecoveryMode(false)} />
+        </div>
+      </ThemeContext.Provider>
     );
   }
 
