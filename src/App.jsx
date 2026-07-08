@@ -2422,9 +2422,10 @@ function AccessTab({ profile }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Alumnos (aprobar / rechazar cuentas)                    */
 /* ------------------------------------------------------------------ */
-function StudentsTab({ users, setUsers }) {
+function StudentsTab({ users, setUsers, currentAdminId }) {
   const { cfg, sans, serif } = useTheme();
   const [filter, setFilter] = useState("pending");
+  const visibleUsers = users.filter((u) => u.id !== currentAdminId);
 
   async function setStatus(id, status) {
     try {
@@ -2443,14 +2444,14 @@ function StudentsTab({ users, setUsers }) {
     }
   }
 
-  const pendingCount = users.filter((u) => u.status === "pending").length;
+  const pendingCount = visibleUsers.filter((u) => u.status === "pending").length;
   const filters = [
     { key: "pending", label: `Pendientes (${pendingCount})` },
     { key: "approved", label: "Aprobados" },
     { key: "rejected", label: "Rechazados" },
     { key: "all", label: "Todos" },
   ];
-  const filtered = [...users]
+  const filtered = [...visibleUsers]
     .filter((u) => filter === "all" || u.status === filter)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -3104,7 +3105,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
       {tab === "content" && <ContentTab exercises={exercises} setExercises={setExercises} track={track} />}
       {tab === "articles" && <ArticlesTab articles={articles} setArticles={setArticles} track={track} />}
       {tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} track={track} />}
-      {tab === "students" && <StudentsTab users={users} setUsers={setUsers} />}
+      {tab === "students" && <StudentsTab users={users} setUsers={setUsers} currentAdminId={profile?.id} />}
       {tab === "progress" && <ProgressTab users={users} submissions={submissions} />}
       {tab === "layout" && <LayoutTab cfg={cfg} updateConfig={updateConfig} />}
       {tab === "appearance" && <AppearanceTab cfg={cfg} updateConfig={updateConfig} customLogo={customLogo} onSetCustomLogo={onSetCustomLogo} onClearCustomLogo={onClearCustomLogo} />}

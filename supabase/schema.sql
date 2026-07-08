@@ -117,6 +117,26 @@ create trigger protect_profile_privileges_trigger
   before update on profiles
   for each row execute function protect_profile_privileges();
 
+-- Stop an admin (or anyone) from deleting their own profile row via the API,
+-- even by accident from the Students tab.
+create or replace function prevent_self_delete()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if auth.uid() is not null and old.id = auth.uid() then
+    raise exception 'No puedes eliminar tu propia cuenta.';
+  end if;
+  return old;
+end;
+$$;
+
+drop trigger if exists prevent_self_delete_trigger on profiles;
+create trigger prevent_self_delete_trigger
+  before delete on profiles
+  for each row execute function prevent_self_delete();
+
 -- Helper used by RLS policies below (SECURITY DEFINER avoids recursive RLS checks).
 create or replace function is_admin()
 returns boolean
