@@ -50,7 +50,16 @@ export async function fetchMyProfile() {
 /*  Student accounts (admin side)                                       */
 /* ------------------------------------------------------------------ */
 function rowToProfile(r) {
-  return { id: r.id, name: r.name, email: r.email, status: r.status, isAdmin: r.is_admin, createdAt: r.created_at };
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    status: r.status,
+    isAdmin: r.is_admin,
+    createdAt: r.created_at,
+    plan: r.plan,
+    planStartDate: r.plan_start_date,
+  };
 }
 
 export async function fetchAllProfiles() {
@@ -61,6 +70,11 @@ export async function fetchAllProfiles() {
 
 export async function updateProfileStatus(id, status) {
   const { error } = await supabase.from("profiles").update({ status }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function updateProfilePlan(id, plan, planStartDate) {
+  const { error } = await supabase.from("profiles").update({ plan, plan_start_date: planStartDate || null }).eq("id", id);
   if (error) throw error;
 }
 
@@ -179,6 +193,31 @@ export async function insertArticle(a) {
 
 export async function deleteArticle(id) {
   const { error } = await supabase.from("articles").delete().eq("id", id);
+  if (error) throw error;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Reviews (testimonials)                                              */
+/* ------------------------------------------------------------------ */
+function rowToReview(r) {
+  return { id: r.id, authorName: r.author_name, rating: r.rating, body: r.body, dateAdded: r.date_added };
+}
+
+export async function fetchReviews() {
+  const { data, error } = await supabase.from("reviews").select("*").order("date_added", { ascending: false });
+  if (error) throw error;
+  return (data || []).map(rowToReview);
+}
+
+export async function insertReview(rev) {
+  const row = { author_name: rev.authorName, rating: rev.rating, body: rev.body };
+  const { data, error } = await supabase.from("reviews").insert(row).select().single();
+  if (error) throw error;
+  return rowToReview(data);
+}
+
+export async function deleteReview(id) {
+  const { error } = await supabase.from("reviews").delete().eq("id", id);
   if (error) throw error;
 }
 

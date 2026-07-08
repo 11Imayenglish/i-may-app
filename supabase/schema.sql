@@ -10,7 +10,9 @@ create table if not exists profiles (
   email text,
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   is_admin boolean not null default false,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  plan text not null default 'individual' check (plan in ('individual','3months','6months')),
+  plan_start_date date
 );
 
 create table if not exists exercises (
@@ -39,6 +41,14 @@ create table if not exists articles (
   body text default '',
   date_added timestamptz not null default now(),
   icon text default ''
+);
+
+create table if not exists reviews (
+  id uuid primary key default gen_random_uuid(),
+  author_name text not null,
+  rating int not null check (rating between 1 and 5),
+  body text not null,
+  date_added timestamptz not null default now()
 );
 
 create table if not exists materials (
@@ -111,6 +121,8 @@ begin
   if auth.uid() is not null and not exists (select 1 from public.profiles where id = auth.uid() and is_admin) then
     new.is_admin := old.is_admin;
     new.status := old.status;
+    new.plan := old.plan;
+    new.plan_start_date := old.plan_start_date;
   end if;
   return new;
 end;
@@ -170,6 +182,7 @@ alter table materials enable row level security;
 alter table submissions enable row level security;
 alter table writing_drafts enable row level security;
 alter table site_config enable row level security;
+alter table reviews enable row level security;
 
 -- profiles
 create policy "profiles: read own or admin reads all" on profiles for select
@@ -190,13 +203,25 @@ create policy "exercises: admin updates" on exercises for update
 create policy "exercises: admin deletes" on exercises for delete
   using (is_admin());
 
-create policy "articles: read if approved or admin" on articles for select
-  using (is_approved() or is_admin());
+-- Articles are public — they're the marketing/blog content shown to visitors
+-- before they have an account.
+create policy "articles: public read" on articles for select
+  using (true);
 create policy "articles: admin writes" on articles for insert
   with check (is_admin());
 create policy "articles: admin updates" on articles for update
   using (is_admin());
 create policy "articles: admin deletes" on articles for delete
+  using (is_admin());
+
+-- Reviews (testimonials) are public too.
+create policy "reviews: public read" on reviews for select
+  using (true);
+create policy "reviews: admin writes" on reviews for insert
+  with check (is_admin());
+create policy "reviews: admin updates" on reviews for update
+  using (is_admin());
+create policy "reviews: admin deletes" on reviews for delete
   using (is_admin());
 
 create policy "materials: read if approved or admin" on materials for select

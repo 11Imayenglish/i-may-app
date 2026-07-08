@@ -34,6 +34,8 @@ import {
   Users,
   TrendingUp,
   Menu,
+  Star,
+  CalendarDays,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import * as api from "./lib/api";
@@ -599,6 +601,80 @@ function CategoriesBlock({ exercises, setView, track }) {
         ))}
       </div>
     </section>
+  );
+}
+
+function StarRating({ rating, size = 14, color }) {
+  return (
+    <span style={{ color, lineHeight: 1 }} aria-label={`${rating} de 5 estrellas`}>
+      {"★".repeat(rating)}
+      <span style={{ opacity: 0.25 }}>{"★".repeat(5 - rating)}</span>
+    </span>
+  );
+}
+
+function ReviewsBlock({ reviews }) {
+  const { cfg, colors, serif, sans } = useTheme();
+  if (!reviews.length) return null;
+  return (
+    <section className="max-w-6xl mx-auto px-6 pb-16">
+      <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-4">
+        Lo que dicen nuestros alumnos
+      </h2>
+      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+        {reviews.map((r) => (
+          <div key={r.id} className="p-4 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+            <StarRating rating={r.rating} color="#D4A017" />
+            <p style={{ ...sans, color: colors.ink }} className="text-sm mt-2 leading-relaxed">
+              "{r.body}"
+            </p>
+            <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-3 font-semibold">
+              — {r.authorName}
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function PublicHome({ articles, reviews, setView, track }) {
+  const { cfg, colors, serif, sans, trackInfo, logoSrc, bannerUrl } = useTheme();
+  const t = trackInfo(track);
+  return (
+    <>
+      {bannerUrl && (
+        <div className="w-full">
+          <img src={bannerUrl} alt="" style={{ height: cfg.contentSizes.banner }} className="w-full object-cover" />
+        </div>
+      )}
+      <section className="max-w-6xl mx-auto px-6 pt-14 pb-10">
+        {cfg.showLogoImage && (
+          <div className="mb-8" style={{ display: "flex", justifyContent: alignToJustify(cfg.logoLayout.home.align) }}>
+            <img src={logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.home.size }} className="w-auto" />
+          </div>
+        )}
+        <div style={{ ...sans, color: t.accent }} className="text-xs uppercase tracking-[0.2em] font-semibold mb-4">
+          {t.eyebrow}
+        </div>
+        <h1 style={{ ...serif, color: colors.ink }} className="text-4xl md:text-5xl font-semibold leading-[1.08] mb-5 max-w-2xl">
+          {t.headline}
+        </h1>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-base md:text-lg leading-relaxed mb-8 max-w-xl">
+          {t.paragraph}
+        </p>
+        <button
+          onClick={() => setView({ name: "grammar" })}
+          className="px-5 py-3 text-sm font-semibold rounded-sm"
+          style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}
+        >
+          Crear cuenta / Iniciar sesión
+        </button>
+      </section>
+
+      <ArticlesBlock articles={articles} track={track} setView={setView} />
+      <ReviewsBlock reviews={reviews} />
+    </>
   );
 }
 
@@ -2692,6 +2768,38 @@ function AccessTab({ profile }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Alumnos (aprobar / rechazar cuentas)                    */
 /* ------------------------------------------------------------------ */
+const PLAN_LABELS = { individual: "Clases individuales", "3months": "Pack 3 meses", "6months": "Pack 6 meses" };
+
+function computePlanEndDate(plan, startDate) {
+  if (!startDate || plan === "individual") return null;
+  const d = new Date(startDate + "T00:00:00");
+  d.setMonth(d.getMonth() + (plan === "3months" ? 3 : 6));
+  return d;
+}
+
+function PlanBadge({ plan, planStartDate, colors, sans }) {
+  if (plan === "individual") return null;
+  if (!planStartDate) {
+    return <span style={{ ...sans, color: "#5B6472" }} className="text-[10px] italic">Sin fecha de inicio</span>;
+  }
+  const end = computePlanEndDate(plan, planStartDate);
+  const daysLeft = Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+  let color = colors.success;
+  let label = `Activo hasta ${formatDate(end.toISOString())}`;
+  if (daysLeft < 0) {
+    color = colors.error;
+    label = `Caducado (${formatDate(end.toISOString())})`;
+  } else if (daysLeft <= 14) {
+    color = "#B8860B";
+    label = `Caduca pronto (${formatDate(end.toISOString())})`;
+  }
+  return (
+    <span style={{ ...sans, backgroundColor: mix(color, "#ffffff", 0.85), color }} className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm w-fit">
+      {label}
+    </span>
+  );
+}
+
 function StudentsTab({ users, setUsers, currentAdminId }) {
   const { cfg, sans, serif } = useTheme();
   const [filter, setFilter] = useState("pending");
@@ -2703,6 +2811,18 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
       setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, status } : u)));
     } catch {
       /* the list simply won't reflect the change; the button remains clickable to retry */
+    }
+  }
+  async function updatePlan(id, patch) {
+    const u = users.find((x) => x.id === id);
+    if (!u) return;
+    const nextPlan = patch.plan ?? u.plan;
+    const nextStart = patch.planStartDate !== undefined ? patch.planStartDate : u.planStartDate;
+    try {
+      await api.updateProfilePlan(id, nextPlan, nextStart);
+      setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, plan: nextPlan, planStartDate: nextStart } : x)));
+    } catch {
+      /* the list simply won't reflect the change; the controls remain editable to retry */
     }
   }
   async function handleDelete(id) {
@@ -2754,30 +2874,63 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
       ) : (
         <ul className="space-y-2">
           {filtered.map((u) => (
-            <li key={u.id} className="flex items-center justify-between gap-3 p-3 border" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
-              <div className="min-w-0">
-                <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium truncate">{u.name || "(sin nombre)"}</div>
-                <div style={{ ...sans, color: "#5B6472" }} className="text-xs truncate">{u.email} · {formatDate(u.createdAt)}</div>
+            <li key={u.id} className="flex flex-col gap-3 p-3 border" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium truncate">{u.name || "(sin nombre)"}</div>
+                  <div style={{ ...sans, color: "#5B6472" }} className="text-xs truncate flex items-center gap-1">
+                    {u.email} <span className="mx-1">·</span> <CalendarDays size={11} /> Se apuntó el {formatDate(u.createdAt)}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {u.status !== "approved" && (
+                    <button onClick={() => setStatus(u.id, "approved")} className="px-2.5 py-1 text-xs font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.success, color: "#fff" }}>
+                      Aprobar
+                    </button>
+                  )}
+                  {u.status !== "rejected" && (
+                    <button onClick={() => setStatus(u.id, "rejected")} className="px-2.5 py-1 text-xs font-semibold rounded-sm border" style={{ ...sans, borderColor: cfg.colors.error, color: cfg.colors.error }}>
+                      Rechazar
+                    </button>
+                  )}
+                  {u.status !== "pending" && (
+                    <button onClick={() => setStatus(u.id, "pending")} className="px-2.5 py-1 text-xs font-semibold rounded-sm border" style={{ ...sans, borderColor: cfg.colors.line, color: "#5B6472" }}>
+                      Revocar
+                    </button>
+                  )}
+                  <button onClick={() => handleDelete(u.id)} style={{ color: cfg.colors.error }} title="Eliminar cuenta">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-2 shrink-0">
-                {u.status !== "approved" && (
-                  <button onClick={() => setStatus(u.id, "approved")} className="px-2.5 py-1 text-xs font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.success, color: "#fff" }}>
-                    Aprobar
-                  </button>
+
+              <div className="flex items-center gap-3 flex-wrap pt-2 border-t" style={{ borderColor: cfg.colors.line }}>
+                <label className="text-xs flex items-center gap-1.5" style={sans}>
+                  Pack:
+                  <select
+                    value={u.plan || "individual"}
+                    onChange={(e) => updatePlan(u.id, { plan: e.target.value })}
+                    className="border px-2 py-1 text-xs"
+                    style={{ borderColor: cfg.colors.line }}
+                  >
+                    {Object.entries(PLAN_LABELS).map(([key, label]) => (
+                      <option key={key} value={key}>{label}</option>
+                    ))}
+                  </select>
+                </label>
+                {u.plan !== "individual" && (
+                  <label className="text-xs flex items-center gap-1.5" style={sans}>
+                    Inicio:
+                    <input
+                      type="date"
+                      value={u.planStartDate || ""}
+                      onChange={(e) => updatePlan(u.id, { planStartDate: e.target.value })}
+                      className="border px-2 py-1 text-xs"
+                      style={{ borderColor: cfg.colors.line }}
+                    />
+                  </label>
                 )}
-                {u.status !== "rejected" && (
-                  <button onClick={() => setStatus(u.id, "rejected")} className="px-2.5 py-1 text-xs font-semibold rounded-sm border" style={{ ...sans, borderColor: cfg.colors.error, color: cfg.colors.error }}>
-                    Rechazar
-                  </button>
-                )}
-                {u.status !== "pending" && (
-                  <button onClick={() => setStatus(u.id, "pending")} className="px-2.5 py-1 text-xs font-semibold rounded-sm border" style={{ ...sans, borderColor: cfg.colors.line, color: "#5B6472" }}>
-                    Revocar
-                  </button>
-                )}
-                <button onClick={() => handleDelete(u.id)} style={{ color: cfg.colors.error }} title="Eliminar cuenta">
-                  <Trash2 size={15} />
-                </button>
+                <PlanBadge plan={u.plan || "individual"} planStartDate={u.planStartDate} colors={cfg.colors} sans={sans} />
               </div>
             </li>
           ))}
@@ -3072,6 +3225,100 @@ function ArticlesTab({ articles, setArticles, track }) {
           ))}
           {filteredList.length === 0 && (
             <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no hay artículos en esta área.</p>
+          )}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin — tab: Reseñas (testimonios mostrados a visitantes)           */
+/* ------------------------------------------------------------------ */
+function emptyReviewForm() {
+  return { authorName: "", rating: 5, body: "" };
+}
+
+function ReviewsTab({ reviews, setReviews }) {
+  const { cfg, sans, serif } = useTheme();
+  const [form, setForm] = useState(emptyReviewForm());
+  const [message, setMessage] = useState("");
+
+  function updateField(field, value) {
+    setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.authorName.trim() || !form.body.trim()) {
+      setMessage("Añade el nombre de quien la escribió y el texto de la reseña.");
+      return;
+    }
+    try {
+      const created = await api.insertReview({ authorName: form.authorName.trim(), rating: Number(form.rating), body: form.body.trim() });
+      setReviews((prev) => [created, ...prev]);
+      setMessage("Reseña publicada.");
+    } catch {
+      setMessage("No se pudo guardar. Inténtalo de nuevo.");
+    }
+    setForm(emptyReviewForm());
+  }
+
+  async function handleDelete(id) {
+    try {
+      await api.deleteReview(id);
+      setReviews((prev) => prev.filter((r) => r.id !== id));
+    } catch {
+      setMessage("No se pudo eliminar. Inténtalo de nuevo.");
+    }
+  }
+
+  return (
+    <div className="grid lg:grid-cols-[1fr_1fr] gap-10">
+      <div>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-6">
+          Copia aquí las reseñas que te dejen tus alumnos (en Google o donde sea). Se muestran a cualquier visitante, incluso antes de
+          registrarse.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="text-sm block" style={sans}>
+            Nombre de quien la escribió
+            <input value={form.authorName} onChange={(e) => updateField("authorName", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder="Ej. María G." />
+          </label>
+          <label className="text-sm block" style={sans}>
+            Puntuación
+            <select value={form.rating} onChange={(e) => updateField("rating", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
+              {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{"★".repeat(n)} ({n})</option>)}
+            </select>
+          </label>
+          <label className="text-sm block" style={sans}>
+            Texto de la reseña
+            <textarea value={form.body} onChange={(e) => updateField("body", e.target.value)} rows={4} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+          </label>
+          <div className="flex items-center gap-3">
+            <button type="submit" className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
+              Publicar reseña
+            </button>
+            {message && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{message}</span>}
+          </div>
+        </form>
+      </div>
+
+      <div>
+        <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Reseñas publicadas</span>
+        <ul className="space-y-2 mt-3 max-h-[70vh] overflow-y-auto pr-1">
+          {reviews.map((r) => (
+            <li key={r.id} className="flex items-start justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
+              <div className="min-w-0">
+                <div style={{ ...sans, color: "#D4A017" }} className="text-xs">{"★".repeat(r.rating)}</div>
+                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium">{r.authorName}</div>
+                <div style={{ ...sans, color: "#5B6472" }} className="text-xs line-clamp-2">{r.body}</div>
+              </div>
+              <button onClick={() => handleDelete(r.id)} style={{ color: cfg.colors.error }} title="Eliminar" className="shrink-0"><Trash2 size={16} /></button>
+            </li>
+          ))}
+          {reviews.length === 0 && (
+            <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no hay reseñas publicadas.</p>
           )}
         </ul>
       </div>
@@ -3398,7 +3645,7 @@ function AdvancedTab({ cfg, onReset }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — root panel with tabs                                        */
 /* ------------------------------------------------------------------ */
-function AdminPanel({ exercises, setExercises, articles, setArticles, materials, setMaterials, track, cfg, updateConfig, resetConfig, customLogo, onSetCustomLogo, onClearCustomLogo, profile }) {
+function AdminPanel({ exercises, setExercises, articles, setArticles, materials, setMaterials, reviews, setReviews, track, cfg, updateConfig, resetConfig, customLogo, onSetCustomLogo, onClearCustomLogo, profile }) {
   const { serif, sans } = useTheme();
   const [tab, setTab] = useState("content");
   const [users, setUsers] = useState([]);
@@ -3416,6 +3663,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
   const tabs = [
     { key: "content", label: "Ejercicios", icon: FileText },
     { key: "articles", label: "Artículos", icon: Newspaper },
+    { key: "reviews", label: "Reseñas", icon: Star },
     { key: "materials", label: "Recursos", icon: FileText },
     { key: "students", label: pendingCount > 0 ? `Alumnos (${pendingCount})` : "Alumnos", icon: Users },
     { key: "progress", label: "Progreso", icon: TrendingUp },
@@ -3457,6 +3705,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
 
       {tab === "content" && <ContentTab exercises={exercises} setExercises={setExercises} track={track} />}
       {tab === "articles" && <ArticlesTab articles={articles} setArticles={setArticles} track={track} />}
+      {tab === "reviews" && <ReviewsTab reviews={reviews} setReviews={setReviews} />}
       {tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} track={track} />}
       {tab === "students" && <StudentsTab users={users} setUsers={setUsers} currentAdminId={profile?.id} />}
       {tab === "progress" && <ProgressTab users={users} submissions={submissions} />}
@@ -3519,6 +3768,7 @@ export default function App() {
   const [exercises, setExercises] = useState(null);
   const [articles, setArticles] = useState(null);
   const [materials, setMaterials] = useState(null);
+  const [reviews, setReviews] = useState([]);
   const [submissions, setSubmissions] = useState([]);
   const [profile, setProfile] = useState(null);
   const [authReady, setAuthReady] = useState(false);
@@ -3531,15 +3781,17 @@ export default function App() {
 
   useEffect(() => {
     (async () => {
-      const [loadedExercises, loadedArticles, loadedMaterials, siteConfig] = await Promise.all([
+      const [loadedExercises, loadedArticles, loadedMaterials, loadedReviews, siteConfig] = await Promise.all([
         api.fetchExercises(),
         api.fetchArticles(),
         api.fetchMaterials(),
+        api.fetchReviews(),
         api.fetchSiteConfig(),
       ]);
       setExercises(loadedExercises);
       setArticles(loadedArticles);
       setMaterials(loadedMaterials);
+      setReviews(loadedReviews);
       setCfg(mergeConfig(siteConfig.config));
       setCustomLogo(siteConfig.customLogo);
       const preferredTrack = api.getPreferredTrack();
@@ -3645,7 +3897,12 @@ export default function App() {
 
   let content;
   if (view.name === "home") {
-    content = <Home exercises={exercises} articles={articles} setView={setView} track={track} />;
+    content =
+      profile && profile.status === "approved" ? (
+        <Home exercises={exercises} articles={articles} setView={setView} track={track} />
+      ) : (
+        <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
+      );
   } else if (CATEGORY_KEYS.includes(view.name)) {
     content = <CategoryList type={view.name} exercises={exercises} materials={materials} setView={setView} focusId={view.focusId} track={track} submissions={submissions} currentUser={currentUser} />;
   } else if (view.name === "detail") {
@@ -3686,6 +3943,8 @@ export default function App() {
           setArticles={setArticles}
           materials={materials}
           setMaterials={setMaterials}
+          reviews={reviews}
+          setReviews={setReviews}
           track={track}
           cfg={cfg}
           updateConfig={updateConfig}
@@ -3699,8 +3958,9 @@ export default function App() {
     );
   }
 
+  const PUBLIC_VIEWS = ["home", "articles", "article-detail"];
   const gatedContent =
-    view.name === "admin" ? (
+    view.name === "admin" || PUBLIC_VIEWS.includes(view.name) ? (
       content
     ) : (
       <StudentAuthGate profile={profile} onLogout={handleLogout}>
