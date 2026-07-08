@@ -2669,9 +2669,24 @@ function ArticlesTab({ articles, setArticles, track }) {
   const [form, setForm] = useState(emptyArticleForm(track));
   const [message, setMessage] = useState("");
   const [filterTrack, setFilterTrack] = useState(track);
+  const [coverBusy, setCoverBusy] = useState(false);
 
   function updateField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  async function handleUploadCover(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCoverBusy(true);
+    try {
+      const url = await api.uploadImage(file, "articles");
+      updateField("coverImageUrl", url);
+    } catch {
+      setMessage("No se pudo subir la imagen. Inténtalo de nuevo.");
+    }
+    setCoverBusy(false);
+    e.target.value = "";
   }
 
   async function handleSubmit(e) {
@@ -2714,11 +2729,6 @@ function ArticlesTab({ articles, setArticles, track }) {
         <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-2">
           Publica artículos de blog para el área civil o militar, con una imagen de portada opcional.
         </p>
-        <p style={{ ...sans, color: "#5B6472" }} className="text-xs mb-6 flex items-start gap-1.5">
-          <ImageIcon size={13} className="mt-0.5 shrink-0" />
-          Esta plantilla no permite subir archivos de imagen directamente: pega la URL de una imagen ya alojada en algún sitio (tu propio
-          hosting, un enlace público de Google Drive, imgbb, etc.).
-        </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="text-sm" style={sans}>
             Área
@@ -2731,10 +2741,24 @@ function ArticlesTab({ articles, setArticles, track }) {
             Título
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
           </label>
-          <label className="text-sm block" style={sans}>
-            URL de la imagen de portada (opcional)
-            <input value={form.coverImageUrl} onChange={(e) => updateField("coverImageUrl", e.target.value)} placeholder="https://…" className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
-          </label>
+          <div className="text-sm" style={sans}>
+            Imagen de portada (opcional)
+            <div className="mt-1 flex items-center gap-3 flex-wrap">
+              <label
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: coverBusy ? 0.5 : 1 }}
+              >
+                <ImageIcon size={13} />
+                {coverBusy ? "Subiendo…" : "Subir imagen"}
+                <input type="file" accept="image/*" onChange={handleUploadCover} disabled={coverBusy} className="hidden" />
+              </label>
+              {form.coverImageUrl && (
+                <button type="button" onClick={() => updateField("coverImageUrl", "")} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                  Quitar imagen
+                </button>
+              )}
+            </div>
+          </div>
           {form.coverImageUrl && <img src={form.coverImageUrl} alt="" className="w-full h-32 object-cover border" style={{ borderColor: cfg.colors.line }} />}
           <label className="text-sm block" style={sans}>
             Resumen breve (opcional, se usa en la tarjeta)
