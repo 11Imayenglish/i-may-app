@@ -25,7 +25,9 @@ create table if not exists exercises (
   questions jsonb not null default '[]',
   sort_order double precision not null default 0,
   date_added timestamptz not null default now(),
-  audio_url text default ''
+  audio_url text default '',
+  theory_file_url text default '',
+  theory_file_name text default ''
 );
 
 create table if not exists articles (

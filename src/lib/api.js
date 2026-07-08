@@ -89,6 +89,8 @@ function rowToExercise(r) {
     questions: r.questions || [],
     sortOrder: r.sort_order,
     audioUrl: r.audio_url || "",
+    theoryFileUrl: r.theory_file_url || "",
+    theoryFileName: r.theory_file_name || "",
   };
 }
 
@@ -117,6 +119,8 @@ export async function insertExercise(ex) {
     questions: ex.questions,
     sort_order: sortOrder,
     audio_url: ex.audioUrl || "",
+    theory_file_url: ex.theoryFileUrl || "",
+    theory_file_name: ex.theoryFileName || "",
   };
   const { data, error } = await supabase.from("exercises").insert(row).select().single();
   if (error) throw error;

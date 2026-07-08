@@ -507,7 +507,7 @@ function IntroBlock({ exercises, setView, track }) {
             {cfg.copy.ctaPrimary}
           </button>
           <button
-            onClick={() => setView({ name: "grammar" })}
+            onClick={() => setView({ name: "temario" })}
             className="px-5 py-3 text-sm font-semibold rounded-sm border"
             style={{ ...sans, borderColor: colors.ink, color: colors.ink }}
           >
@@ -658,6 +658,81 @@ function MaterialsSection({ materials, type, track }) {
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function TemarioView({ materials, track, setView }) {
+  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const t = trackInfo(track);
+  const byCategory = useMemo(() => {
+    const map = {};
+    CATEGORY_KEYS.forEach((key) => {
+      map[key] = materials
+        .filter((m) => m.track === track && m.category === key)
+        .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+    });
+    return map;
+  }, [materials, track]);
+  const hasAny = CATEGORY_KEYS.some((key) => byCategory[key].length > 0);
+  const [openId, setOpenId] = useState(null);
+
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-12">
+      <h2 style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold mb-2">
+        Temario
+      </h2>
+      <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
+
+      {!hasAny ? (
+        <p style={{ ...sans, color: "#5B6472" }}>
+          Todavía no hay teoría ni recursos publicados en el área {t.label.toLowerCase()}.
+        </p>
+      ) : (
+        <div className="space-y-10">
+          {CATEGORY_KEYS.filter((key) => byCategory[key].length > 0).map((key) => (
+            <div key={key}>
+              <div className="flex items-center gap-2 mb-3">
+                <CategoryIcon catKey={key} size={18} style={{ color: t.accent }} />
+                <h3 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold">
+                  {cfg.categoryLabels[key]}
+                </h3>
+                <button onClick={() => setView({ name: key })} className="text-xs underline ml-2" style={{ ...sans, color: "#5B6472" }}>
+                  Ver ejercicios
+                </button>
+              </div>
+              <ul className="space-y-2">
+                {byCategory[key].map((m) => (
+                  <li key={m.id} className="border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+                    {m.kind === "theory" ? (
+                      <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full text-left p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
+                            <BookOpen size={14} style={{ color: t.accent }} /> {m.title}
+                          </span>
+                          <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
+                        </div>
+                        {openId === m.id && (
+                          <p style={{ ...sans, color: "#5B6472" }} className="text-sm mt-2 leading-relaxed whitespace-pre-line">
+                            {m.body}
+                          </p>
+                        )}
+                      </button>
+                    ) : (
+                      <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
+                        <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
+                          <FileText size={14} style={{ color: t.accent }} /> {m.title}
+                        </span>
+                        <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -877,6 +952,18 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         <p style={{ ...sans, color: "#5B6472" }} className="mb-6 italic">
           {exercise.instructions}
         </p>
+      )}
+
+      {exercise.type === "grammar" && exercise.theoryFileUrl && (
+        <a
+          href={exercise.theoryFileUrl}
+          download={exercise.theoryFileName || "teoria"}
+          className="flex items-center gap-2 p-4 mb-6 border text-sm font-medium"
+          style={{ borderColor: t.accent, backgroundColor: t.accentSoft, color: t.accentDeep, ...sans }}
+        >
+          <FileText size={16} />
+          Descargar teoría de este ejercicio {exercise.theoryFileName ? `(${exercise.theoryFileName})` : ""}
+        </a>
       )}
 
       {exercise.type === "reading" && (
@@ -1501,7 +1588,7 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "" });
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
 }
 
 function parseBulkQuestions(text) {
@@ -1537,6 +1624,7 @@ function ContentTab({ exercises, setExercises, track }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
+  const [theoryBusy, setTheoryBusy] = useState(false);
 
   async function handleUploadAudio(e) {
     const file = e.target.files?.[0];
@@ -1549,6 +1637,20 @@ function ContentTab({ exercises, setExercises, track }) {
       setMessage("No se pudo subir el audio. Inténtalo de nuevo.");
     }
     setAudioBusy(false);
+    e.target.value = "";
+  }
+
+  async function handleUploadTheory(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setTheoryBusy(true);
+    try {
+      const url = await api.uploadFile(file, "exercise-theory");
+      setForm((f) => ({ ...f, theoryFileUrl: url, theoryFileName: file.name }));
+    } catch {
+      setMessage("No se pudo subir el documento. Inténtalo de nuevo.");
+    }
+    setTheoryBusy(false);
     e.target.value = "";
   }
 
@@ -1584,6 +1686,8 @@ function ContentTab({ exercises, setExercises, track }) {
       instructions: form.instructions.trim(), passage: form.passage.trim(),
       minWords: form.type === "writing" ? Number(form.minWords) || 0 : null,
       audioUrl: form.type === "listening" ? form.audioUrl : "",
+      theoryFileUrl: form.type === "grammar" ? form.theoryFileUrl : "",
+      theoryFileName: form.type === "grammar" ? form.theoryFileName : "",
       questions: form.type === "writing" ? [] : form.questions.filter((q) => q.question.trim() && q.options.every((o) => o.trim())).map((q) => ({ ...q })),
     };
     try {
@@ -1668,6 +1772,36 @@ function ContentTab({ exercises, setExercises, track }) {
             Título
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder="Ej. Reported Speech in Emails" />
           </label>
+
+          {form.type === "grammar" && (
+            <div className="text-sm" style={sans}>
+              Documento de teoría (opcional — Word u otro archivo)
+              <div className="mt-1 flex items-center gap-3 flex-wrap">
+                <label
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                  style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: theoryBusy ? 0.5 : 1 }}
+                >
+                  <FileText size={13} />
+                  {theoryBusy ? "Subiendo…" : "Subir documento"}
+                  <input
+                    type="file"
+                    accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.pdf"
+                    onChange={handleUploadTheory}
+                    disabled={theoryBusy}
+                    className="hidden"
+                  />
+                </label>
+                {form.theoryFileUrl && (
+                  <>
+                    <span style={{ color: "#5B6472" }} className="text-xs">{form.theoryFileName}</span>
+                    <button type="button" onClick={() => updateField("theoryFileUrl", "")} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                      Quitar
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
 
           {form.type !== "writing" && (
             <label className="text-sm block" style={sans}>
@@ -3531,6 +3665,8 @@ export default function App() {
     ) : (
       <div className="max-w-3xl mx-auto px-6 py-12">Ejercicio no encontrado.</div>
     );
+  } else if (view.name === "temario") {
+    content = <TemarioView materials={materials} track={track} setView={setView} />;
   } else if (view.name === "articles") {
     content = <ArticlesList articles={articles} track={track} setView={setView} />;
   } else if (view.name === "article-detail") {
