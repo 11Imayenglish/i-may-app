@@ -881,13 +881,19 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
 
       {exercise.type === "listening" && (
         <div className="p-5 mb-8 border flex flex-col items-start gap-3" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
-          <button onClick={playAudio} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}>
-            {playing ? <Volume2 size={16} /> : <Play size={16} />}
-            {playing ? "Reproduciendo…" : "Reproducir audio"}
-          </button>
-          <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
-            Se reproduce con voz sintética en inglés. Si tu dispositivo no soporta audio, puedes leer la transcripción.
-          </p>
+          {exercise.audioUrl ? (
+            <audio controls src={exercise.audioUrl} className="w-full" />
+          ) : (
+            <>
+              <button onClick={playAudio} className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}>
+                {playing ? <Volume2 size={16} /> : <Play size={16} />}
+                {playing ? "Reproduciendo…" : "Reproducir audio"}
+              </button>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
+                Se reproduce con voz sintética en inglés. Si tu dispositivo no soporta audio, puedes leer la transcripción.
+              </p>
+            </>
+          )}
           <button onClick={() => setTranscriptShown((s) => !s)} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
             {transcriptShown ? "Ocultar transcripción" : "Ver transcripción"}
           </button>
@@ -1480,7 +1486,7 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "" });
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", questions: [EMPTY_QUESTION()] };
 }
 
 function parseBulkQuestions(text) {
@@ -1515,6 +1521,21 @@ function ContentTab({ exercises, setExercises, track }) {
   const [bulkText, setBulkText] = useState("");
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
+  const [audioBusy, setAudioBusy] = useState(false);
+
+  async function handleUploadAudio(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setAudioBusy(true);
+    try {
+      const url = await api.uploadFile(file, "audio");
+      setForm((f) => ({ ...f, audioUrl: url }));
+    } catch {
+      setMessage("No se pudo subir el audio. Inténtalo de nuevo.");
+    }
+    setAudioBusy(false);
+    e.target.value = "";
+  }
 
   function updateField(field, value) { setForm((f) => ({ ...f, [field]: value })); }
   function updateQuestion(qIndex, field, value) {
@@ -1547,6 +1568,7 @@ function ContentTab({ exercises, setExercises, track }) {
       type: form.type, track: form.track, title: form.title.trim(), level: form.level,
       instructions: form.instructions.trim(), passage: form.passage.trim(),
       minWords: form.type === "writing" ? Number(form.minWords) || 0 : null,
+      audioUrl: form.type === "listening" ? form.audioUrl : "",
       questions: form.type === "writing" ? [] : form.questions.filter((q) => q.question.trim() && q.options.every((o) => o.trim())).map((q) => ({ ...q })),
     };
     try {
@@ -1639,9 +1661,36 @@ function ContentTab({ exercises, setExercises, track }) {
             </label>
           )}
 
+          {form.type === "listening" && (
+            <div className="text-sm" style={sans}>
+              Audio del examen
+              <div className="mt-1 flex items-center gap-3 flex-wrap">
+                <label
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                  style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: audioBusy ? 0.5 : 1 }}
+                >
+                  <Volume2 size={13} />
+                  {audioBusy ? "Subiendo…" : "Subir audio"}
+                  <input type="file" accept="audio/*" onChange={handleUploadAudio} disabled={audioBusy} className="hidden" />
+                </label>
+                {form.audioUrl && (
+                  <>
+                    <audio controls src={form.audioUrl} className="h-9" />
+                    <button type="button" onClick={() => updateField("audioUrl", "")} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                      Quitar
+                    </button>
+                  </>
+                )}
+              </div>
+              <p style={{ color: "#5B6472" }} className="text-xs mt-1">
+                Si no subes un audio, se usará voz sintética leyendo el guion de abajo (menos realista).
+              </p>
+            </div>
+          )}
+
           {needsPassage && (
             <label className="text-sm block" style={sans}>
-              {form.type === "listening" ? "Guion (se leerá en voz alta)" : "Texto de lectura"}
+              {form.type === "listening" ? "Guion / transcripción" : "Texto de lectura"}
               <textarea value={form.passage} onChange={(e) => updateField("passage", e.target.value)} rows={4} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
             </label>
           )}
@@ -1829,7 +1878,7 @@ function TrackAppearanceEditor({ cfg, updateConfig }) {
     if (!file) return;
     setBannerBusy(true);
     try {
-      const url = await api.uploadImage(file, "banners");
+      const url = await api.uploadFile(file, "banners");
       setDraft((d) => ({ ...d, banner: url }));
       setMessage("Imagen subida. Pulsa \"Aplicar\" para usarla.");
     } catch {
@@ -2003,7 +2052,7 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
     if (!file) return;
     setLogoBusy(true);
     try {
-      const url = await api.uploadImage(file, "logo");
+      const url = await api.uploadFile(file, "logo");
       const ok = await onSetCustomLogo(url);
       setLogoInput(url);
       setLogoMessage(ok ? "Logotipo actualizado." : "No se pudo guardar.");
@@ -2680,7 +2729,7 @@ function ArticlesTab({ articles, setArticles, track }) {
     if (!file) return;
     setCoverBusy(true);
     try {
-      const url = await api.uploadImage(file, "articles");
+      const url = await api.uploadFile(file, "articles");
       updateField("coverImageUrl", url);
     } catch {
       setMessage("No se pudo subir la imagen. Inténtalo de nuevo.");

@@ -88,6 +88,7 @@ function rowToExercise(r) {
     minWords: r.min_words,
     questions: r.questions || [],
     sortOrder: r.sort_order,
+    audioUrl: r.audio_url || "",
   };
 }
 
@@ -115,6 +116,7 @@ export async function insertExercise(ex) {
     min_words: ex.minWords,
     questions: ex.questions,
     sort_order: sortOrder,
+    audio_url: ex.audioUrl || "",
   };
   const { data, error } = await supabase.from("exercises").insert(row).select().single();
   if (error) throw error;
@@ -278,7 +280,7 @@ export async function saveWritingDraft(userId, exerciseId, content) {
 /* ------------------------------------------------------------------ */
 /*  Image uploads (logo, banners — stored in the public "media" bucket) */
 /* ------------------------------------------------------------------ */
-export async function uploadImage(file, folder = "uploads") {
+export async function uploadFile(file, folder = "uploads") {
   const ext = file.name.split(".").pop();
   const path = `${folder}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage.from("media").upload(path, file, { cacheControl: "3600", upsert: false });
