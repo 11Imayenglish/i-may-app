@@ -36,6 +36,7 @@ import {
   Menu,
   Star,
   CalendarDays,
+  Pencil,
 } from "lucide-react";
 import { supabase } from "./lib/supabase";
 import * as api from "./lib/api";
@@ -3075,6 +3076,19 @@ function ArticlesTab({ articles, setArticles, track }) {
   const [message, setMessage] = useState("");
   const [filterTrack, setFilterTrack] = useState(track);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  function startEdit(a) {
+    setEditingId(a.id);
+    setForm({ track: a.track, title: a.title, coverImageUrl: a.coverImageUrl, excerpt: a.excerpt, body: a.body, icon: a.icon || "" });
+    setMessage("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(emptyArticleForm(track));
+    setMessage("");
+  }
 
   function updateField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -3100,7 +3114,7 @@ function ArticlesTab({ articles, setArticles, track }) {
       setMessage("Añade al menos un título y el texto del artículo.");
       return;
     }
-    const newArticle = {
+    const articleData = {
       track: form.track,
       title: form.title.trim(),
       coverImageUrl: form.coverImageUrl.trim(),
@@ -3109,12 +3123,19 @@ function ArticlesTab({ articles, setArticles, track }) {
       icon: form.icon.trim(),
     };
     try {
-      const created = await api.insertArticle(newArticle);
-      setArticles((prev) => [created, ...prev]);
-      setMessage("Artículo publicado.");
+      if (editingId) {
+        const updated = await api.updateArticle(editingId, articleData);
+        setArticles((prev) => prev.map((a) => (a.id === editingId ? updated : a)));
+        setMessage("Cambios guardados.");
+      } else {
+        const created = await api.insertArticle(articleData);
+        setArticles((prev) => [created, ...prev]);
+        setMessage("Artículo publicado.");
+      }
     } catch {
       setMessage("No se pudo guardar. Inténtalo de nuevo.");
     }
+    setEditingId(null);
     setForm(emptyArticleForm(form.track));
   }
 
@@ -3122,6 +3143,7 @@ function ArticlesTab({ articles, setArticles, track }) {
     try {
       await api.deleteArticle(id);
       setArticles((prev) => prev.filter((a) => a.id !== id));
+      if (editingId === id) cancelEdit();
     } catch {
       setMessage("No se pudo eliminar. Inténtalo de nuevo.");
     }
@@ -3192,8 +3214,13 @@ function ArticlesTab({ articles, setArticles, track }) {
           </label>
           <div className="flex items-center gap-3">
             <button type="submit" className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
-              Publicar artículo
+              {editingId ? "Guardar cambios" : "Publicar artículo"}
             </button>
+            {editingId && (
+              <button type="button" onClick={cancelEdit} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                Cancelar edición
+              </button>
+            )}
             {message && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{message}</span>}
           </div>
         </form>
@@ -3215,12 +3242,15 @@ function ArticlesTab({ articles, setArticles, track }) {
         </div>
         <ul className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
           {[...filteredList].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)).map((a) => (
-            <li key={a.id} className="flex items-center justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
-              <div>
-                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium">{a.title}</div>
+            <li key={a.id} className="flex items-center justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: editingId === a.id ? mix(cfg.colors.ink, cfg.colors.card, 0.92) : cfg.colors.card }}>
+              <div className="min-w-0">
+                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{a.title}</div>
                 <div style={{ ...sans, color: "#5B6472" }} className="text-xs">{formatDate(a.dateAdded)}</div>
               </div>
-              <button onClick={() => handleDelete(a.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
+              <div className="flex items-center gap-3 shrink-0">
+                <button onClick={() => startEdit(a)} style={{ color: cfg.colors.ink }} title="Editar"><Pencil size={15} /></button>
+                <button onClick={() => handleDelete(a.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
+              </div>
             </li>
           ))}
           {filteredList.length === 0 && (

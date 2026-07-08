@@ -191,6 +191,20 @@ export async function insertArticle(a) {
   return rowToArticle(data);
 }
 
+export async function updateArticle(id, a) {
+  const row = {
+    track: a.track,
+    title: a.title,
+    cover_image_url: a.coverImageUrl,
+    excerpt: a.excerpt,
+    body: a.body,
+    icon: a.icon || "",
+  };
+  const { data, error } = await supabase.from("articles").update(row).eq("id", id).select().single();
+  if (error) throw error;
+  return rowToArticle(data);
+}
+
 export async function deleteArticle(id) {
   const { error } = await supabase.from("articles").delete().eq("id", id);
   if (error) throw error;
