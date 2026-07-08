@@ -190,7 +190,10 @@ function alignToJustify(align) {
 const CATEGORY_KEYS = ["grammar", "listening", "reading", "writing"];
 const CATEGORY_ICON_COMPONENTS = { grammar: ScrollText, listening: Headphones, reading: BookOpen, writing: PenSquare };
 const CATEGORY_NOUNS = { grammar: "ejercicio", listening: "audición", reading: "lectura", writing: "redacción" };
-const LEVELS = ["A2", "B1", "B2", "C1"];
+const LEVELS_BY_TRACK = {
+  civil: ["A2", "B1", "B2", "C1"],
+  military: ["SLP1", "SLP2", "SLP3", "SLP4"],
+};
 
 /* ------------------------------------------------------------------ */
 /*  Theme context — every component reads live config from here        */
@@ -1477,7 +1480,7 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "" });
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: "B1", instructions: "", passage: "", minWords: 60, questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, questions: [EMPTY_QUESTION()] };
 }
 
 function parseBulkQuestions(text) {
@@ -1598,7 +1601,12 @@ function ContentTab({ exercises, setExercises, track }) {
           <div className="grid sm:grid-cols-3 gap-3">
             <label className="text-sm" style={sans}>
               Área
-              <select value={form.track} onChange={(e) => updateField("track", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
+              <select
+                value={form.track}
+                onChange={(e) => { const track = e.target.value; setForm((f) => ({ ...f, track, level: LEVELS_BY_TRACK[track][0] })); }}
+                className="mt-1 w-full border px-3 py-2"
+                style={{ borderColor: cfg.colors.line }}
+              >
                 <option value="civil">{cfg.copy.civil.label}</option>
                 <option value="military">{cfg.copy.military.label}</option>
               </select>
@@ -1614,7 +1622,7 @@ function ContentTab({ exercises, setExercises, track }) {
             <label className="text-sm" style={sans}>
               Nivel
               <select value={form.level} onChange={(e) => updateField("level", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
-                {LEVELS.map((l) => <option key={l}>{l}</option>)}
+                {LEVELS_BY_TRACK[form.track].map((l) => <option key={l}>{l}</option>)}
               </select>
             </label>
           </div>
