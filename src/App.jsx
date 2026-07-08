@@ -132,6 +132,8 @@ const DEFAULT_CONFIG = {
     ctaPrimary: "Comenzar la lección de hoy",
     ctaSecondary: "Ver el temario",
     footerText: "prototipo de demostración.",
+    contactEmail: "",
+    contactPhone: "",
     civil: {
       label: "Civil",
       eyebrow: "Inglés profesional · Online · A2 – C1",
@@ -2336,8 +2338,16 @@ function TextsTab({ cfg, updateConfig }) {
             <input value={cfg.copy.ctaSecondary} onChange={(e) => updateConfig({ copy: { ...cfg.copy, ctaSecondary: e.target.value } })} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
           </label>
           <label className="text-sm block" style={sans}>
-            Texto del pie de página
+            Texto del pie de página (se usa solo si no rellenas el contacto de abajo)
             <input value={cfg.copy.footerText} onChange={(e) => updateConfig({ copy: { ...cfg.copy, footerText: e.target.value } })} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+          </label>
+          <label className="text-sm block" style={sans}>
+            Email de contacto (opcional — sustituye al texto del pie si lo rellenas)
+            <input value={cfg.copy.contactEmail} onChange={(e) => updateConfig({ copy: { ...cfg.copy, contactEmail: e.target.value } })} placeholder="tu@email.com" className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+          </label>
+          <label className="text-sm block" style={sans}>
+            Teléfono de contacto (opcional)
+            <input value={cfg.copy.contactPhone} onChange={(e) => updateConfig({ copy: { ...cfg.copy, contactPhone: e.target.value } })} placeholder="677 46 65 36" className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
           </label>
         </div>
       </div>
@@ -3368,9 +3378,27 @@ export default function App() {
               ) : (
                 <span style={{ ...theme.serif, color: cfg.colors.ink }} className="text-sm font-semibold">{cfg.siteName}</span>
               )}
-              <span style={{ ...theme.sans, color: "#5B6472" }} className="text-xs">
-                © {new Date().getFullYear()} {cfg.siteName} — {cfg.copy.footerText}
-              </span>
+              <div style={{ ...theme.sans, color: "#5B6472" }} className="text-xs">
+                <div>© {new Date().getFullYear()} {cfg.siteName}</div>
+                {cfg.copy.contactEmail || cfg.copy.contactPhone ? (
+                  <div className="flex flex-wrap items-center gap-x-2">
+                    <span className="font-semibold">Contacto:</span>
+                    {cfg.copy.contactEmail && (
+                      <a href={`mailto:${cfg.copy.contactEmail}`} className="underline" style={{ color: "#5B6472" }}>
+                        {cfg.copy.contactEmail}
+                      </a>
+                    )}
+                    {cfg.copy.contactEmail && cfg.copy.contactPhone && <span>·</span>}
+                    {cfg.copy.contactPhone && (
+                      <a href={`tel:${cfg.copy.contactPhone.replace(/\s+/g, "")}`} className="underline" style={{ color: "#5B6472" }}>
+                        {cfg.copy.contactPhone}
+                      </a>
+                    )}
+                  </div>
+                ) : (
+                  <span>— {cfg.copy.footerText}</span>
+                )}
+              </div>
             </div>
             <button onClick={() => setView({ name: "admin" })} className="text-xs underline" style={{ ...theme.sans, color: "#5B6472" }}>
               Panel de administración
