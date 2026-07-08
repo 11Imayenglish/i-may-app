@@ -168,6 +168,8 @@ function rowToArticle(r) {
     body: r.body || "",
     dateAdded: r.date_added,
     icon: r.icon || "",
+    coverPosition: r.cover_position || "center",
+    coverHeight: r.cover_height || null,
   };
 }
 
@@ -185,6 +187,8 @@ export async function insertArticle(a) {
     excerpt: a.excerpt,
     body: a.body,
     icon: a.icon || "",
+    cover_position: a.coverPosition || "center",
+    cover_height: a.coverHeight || null,
   };
   const { data, error } = await supabase.from("articles").insert(row).select().single();
   if (error) throw error;
@@ -199,6 +203,8 @@ export async function updateArticle(id, a) {
     excerpt: a.excerpt,
     body: a.body,
     icon: a.icon || "",
+    cover_position: a.coverPosition || "center",
+    cover_height: a.coverHeight || null,
   };
   const { data, error } = await supabase.from("articles").update(row).eq("id", id).select().single();
   if (error) throw error;

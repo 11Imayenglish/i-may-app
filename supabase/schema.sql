@@ -40,7 +40,9 @@ create table if not exists articles (
   excerpt text default '',
   body text default '',
   date_added timestamptz not null default now(),
-  icon text default ''
+  icon text default '',
+  cover_position text not null default 'center' check (cover_position in ('top','center','bottom')),
+  cover_height int
 );
 
 create table if not exists reviews (

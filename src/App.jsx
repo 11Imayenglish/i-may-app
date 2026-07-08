@@ -1130,7 +1130,12 @@ function ArticleCard({ article, onOpen, accent }) {
       style={{ borderColor: colors.line, backgroundColor: colors.card }}
     >
       {article.coverImageUrl ? (
-        <img src={article.coverImageUrl} alt="" style={{ height: cfg.contentSizes.articleCardCover }} className="w-full object-cover" />
+        <img
+          src={article.coverImageUrl}
+          alt=""
+          style={{ height: cfg.contentSizes.articleCardCover, objectPosition: article.coverPosition || "center" }}
+          className="w-full object-cover"
+        />
       ) : (
         <div className="w-full flex items-center justify-center" style={{ height: cfg.contentSizes.articleCardCover, backgroundColor: mix(accent, "#ffffff", 0.85) }}>
           <Newspaper size={22} style={{ color: accent }} />
@@ -1220,7 +1225,11 @@ function ArticleDetail({ article, setView }) {
           src={article.coverImageUrl}
           alt=""
           className="w-full object-cover mb-6 border"
-          style={{ maxHeight: cfg.contentSizes.articleDetailCover, borderColor: colors.line }}
+          style={{
+            height: article.coverHeight || cfg.contentSizes.articleDetailCover,
+            objectPosition: article.coverPosition || "center",
+            borderColor: colors.line,
+          }}
         />
       )}
       <div style={{ ...sans, color: "#5B6472" }} className="text-xs mb-2 flex items-center gap-1">
@@ -3067,7 +3076,7 @@ function ProgressTab({ users, submissions }) {
 /*  Admin — tab: Artículos (CRUD con imagen de portada)                 */
 /* ------------------------------------------------------------------ */
 function emptyArticleForm(track = "civil") {
-  return { track, title: "", coverImageUrl: "", excerpt: "", body: "", icon: "" };
+  return { track, title: "", coverImageUrl: "", excerpt: "", body: "", icon: "", coverPosition: "center", coverHeight: null };
 }
 
 function ArticlesTab({ articles, setArticles, track }) {
@@ -3080,7 +3089,16 @@ function ArticlesTab({ articles, setArticles, track }) {
 
   function startEdit(a) {
     setEditingId(a.id);
-    setForm({ track: a.track, title: a.title, coverImageUrl: a.coverImageUrl, excerpt: a.excerpt, body: a.body, icon: a.icon || "" });
+    setForm({
+      track: a.track,
+      title: a.title,
+      coverImageUrl: a.coverImageUrl,
+      excerpt: a.excerpt,
+      body: a.body,
+      icon: a.icon || "",
+      coverPosition: a.coverPosition || "center",
+      coverHeight: a.coverHeight || null,
+    });
     setMessage("");
   }
 
@@ -3121,6 +3139,8 @@ function ArticlesTab({ articles, setArticles, track }) {
       excerpt: form.excerpt.trim() || form.body.trim().slice(0, 140),
       body: form.body.trim(),
       icon: form.icon.trim(),
+      coverPosition: form.coverPosition,
+      coverHeight: form.coverHeight,
     };
     try {
       if (editingId) {
@@ -3203,7 +3223,55 @@ function ArticlesTab({ articles, setArticles, track }) {
               )}
             </div>
           </div>
-          {form.coverImageUrl && <img src={form.coverImageUrl} alt="" className="w-full h-32 object-cover border" style={{ borderColor: cfg.colors.line }} />}
+          {form.coverImageUrl && (
+            <>
+              <img
+                src={form.coverImageUrl}
+                alt=""
+                className="w-full h-32 object-cover border"
+                style={{ borderColor: cfg.colors.line, objectPosition: form.coverPosition }}
+              />
+              <div className="text-sm" style={sans}>
+                Posición de la imagen (qué parte se ve al recortarla)
+                <div className="flex items-center border rounded-full p-0.5 mt-1 w-fit" style={{ borderColor: cfg.colors.line }}>
+                  {[["top", "Arriba"], ["center", "Centro"], ["bottom", "Abajo"]].map(([key, lbl]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => updateField("coverPosition", key)}
+                      className="px-3 py-1.5 rounded-full text-xs font-semibold"
+                      style={{ ...sans, backgroundColor: form.coverPosition === key ? cfg.colors.ink : "transparent", color: form.coverPosition === key ? cfg.colors.bg : "#5B6472" }}
+                    >
+                      {lbl}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="text-sm" style={sans}>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={form.coverHeight != null}
+                    onChange={(e) => updateField("coverHeight", e.target.checked ? cfg.contentSizes.articleDetailCover : null)}
+                  />
+                  Usar un tamaño distinto al general en la página del artículo completo
+                </label>
+                {form.coverHeight != null && (
+                  <div className="flex items-center gap-3 mt-2">
+                    <input
+                      type="range"
+                      min={100}
+                      max={600}
+                      value={form.coverHeight}
+                      onChange={(e) => updateField("coverHeight", Number(e.target.value))}
+                      className="w-40"
+                    />
+                    <span style={{ color: "#5B6472" }} className="text-xs">{form.coverHeight}px</span>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
           <label className="text-sm block" style={sans}>
             Resumen breve (opcional, se usa en la tarjeta)
             <input value={form.excerpt} onChange={(e) => updateField("excerpt", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
