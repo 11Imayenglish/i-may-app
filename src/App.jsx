@@ -127,6 +127,11 @@ const DEFAULT_CONFIG = {
     login: { size: 56, align: "center" },
     footer: { size: 32 },
   },
+  contentSizes: {
+    banner: 224,
+    articleCardCover: 128,
+    articleDetailCover: 320,
+  },
   copy: {
     bulletinTitle: "Boletín del Día",
     ctaPrimary: "Comenzar la lección de hoy",
@@ -174,6 +179,7 @@ function mergeConfig(saved) {
       login: { ...DEFAULT_CONFIG.logoLayout.login, ...(s.logoLayout?.login || {}) },
       footer: { ...DEFAULT_CONFIG.logoLayout.footer, ...(s.logoLayout?.footer || {}) },
     },
+    contentSizes: { ...DEFAULT_CONFIG.contentSizes, ...(s.contentSizes || {}) },
     copy: {
       ...DEFAULT_CONFIG.copy,
       ...(s.copy || {}),
@@ -473,7 +479,7 @@ function IntroBlock({ exercises, setView, track }) {
     <>
       {bannerUrl && (
         <div className="w-full">
-          <img src={bannerUrl} alt="" className="w-full h-40 md:h-56 object-cover" />
+          <img src={bannerUrl} alt="" style={{ height: cfg.contentSizes.banner }} className="w-full object-cover" />
         </div>
       )}
       <section className="max-w-6xl mx-auto px-6 pt-14 pb-10 grid md:grid-cols-[1.1fr_0.9fr] gap-10 items-start">
@@ -960,9 +966,9 @@ function ArticleCard({ article, onOpen, accent }) {
       style={{ borderColor: colors.line, backgroundColor: colors.card }}
     >
       {article.coverImageUrl ? (
-        <img src={article.coverImageUrl} alt="" className="w-full h-32 object-cover" />
+        <img src={article.coverImageUrl} alt="" style={{ height: cfg.contentSizes.articleCardCover }} className="w-full object-cover" />
       ) : (
-        <div className="w-full h-32 flex items-center justify-center" style={{ backgroundColor: mix(accent, "#ffffff", 0.85) }}>
+        <div className="w-full flex items-center justify-center" style={{ height: cfg.contentSizes.articleCardCover, backgroundColor: mix(accent, "#ffffff", 0.85) }}>
           <Newspaper size={22} style={{ color: accent }} />
         </div>
       )}
@@ -1045,7 +1051,14 @@ function ArticleDetail({ article, setView }) {
       <button onClick={() => setView({ name: "articles" })} className="flex items-center gap-1 text-sm mb-6" style={{ ...sans, color: "#5B6472" }}>
         <ChevronLeft size={16} /> Volver a {cfg.articlesLabel}
       </button>
-      {article.coverImageUrl && <img src={article.coverImageUrl} alt="" className="w-full max-h-80 object-cover mb-6 border" style={{ borderColor: colors.line }} />}
+      {article.coverImageUrl && (
+        <img
+          src={article.coverImageUrl}
+          alt=""
+          className="w-full object-cover mb-6 border"
+          style={{ maxHeight: cfg.contentSizes.articleDetailCover, borderColor: colors.line }}
+        />
+      )}
       <div style={{ ...sans, color: "#5B6472" }} className="text-xs mb-2 flex items-center gap-1">
         <Clock size={12} /> {formatDate(article.dateAdded)}
       </div>
@@ -2001,15 +2014,15 @@ function TrackAppearanceEditor({ cfg, updateConfig }) {
   );
 }
 
-function LogoLayoutRow({ label, size, onSizeChange, align, onAlignChange, colors, sans }) {
+function SizeControlRow({ label, size, onSizeChange, align, onAlignChange, colors, sans, min = 20, max = 160 }) {
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 border-b flex-wrap" style={{ borderColor: colors.line }}>
       <span style={{ ...sans, color: colors.ink }} className="text-sm">{label}</span>
       <div className="flex items-center gap-3">
         <input
           type="range"
-          min={20}
-          max={160}
+          min={min}
+          max={max}
           value={size}
           onChange={(e) => onSizeChange(Number(e.target.value))}
           className="w-28"
@@ -2149,14 +2162,14 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
             Ajusta el tamaño del logo en cada sitio de la web donde aparece. En la portada y en la pantalla de acceso también puedes
             elegir si va a la izquierda, al centro o a la derecha.
           </p>
-          <LogoLayoutRow
+          <SizeControlRow
             label="Barra de navegación"
             size={cfg.logoLayout.navbar.size}
             onSizeChange={(v) => updateLogoLayout("navbar", { size: v })}
             colors={cfg.colors}
             sans={sans}
           />
-          <LogoLayoutRow
+          <SizeControlRow
             label="Portada"
             size={cfg.logoLayout.home.size}
             onSizeChange={(v) => updateLogoLayout("home", { size: v })}
@@ -2165,7 +2178,7 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
             colors={cfg.colors}
             sans={sans}
           />
-          <LogoLayoutRow
+          <SizeControlRow
             label="Acceso / registro"
             size={cfg.logoLayout.login.size}
             onSizeChange={(v) => updateLogoLayout("login", { size: v })}
@@ -2174,7 +2187,7 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
             colors={cfg.colors}
             sans={sans}
           />
-          <LogoLayoutRow
+          <SizeControlRow
             label="Pie de página"
             size={cfg.logoLayout.footer.size}
             onSizeChange={(v) => updateLogoLayout("footer", { size: v })}
@@ -3117,32 +3130,74 @@ function LayoutTab({ cfg, updateConfig }) {
     updateConfig({ homeVisibility: { ...cfg.homeVisibility, [key]: !cfg.homeVisibility[key] } });
   }
 
+  function updateContentSize(key, value) {
+    updateConfig({ contentSizes: { ...cfg.contentSizes, [key]: value } });
+  }
+
   return (
-    <div className="max-w-xl space-y-4">
-      <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">
-        Orden de la página de inicio
-      </h4>
-      <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">
-        Cambia el orden de los bloques con las flechas, o desactívalos si no quieres que aparezcan.
-      </p>
-      <div className="space-y-2">
-        {layout.map((key, i) => (
-          <div key={key} className="flex items-center justify-between gap-3 p-3 border" style={{ borderColor: cfg.colors.line, opacity: cfg.homeVisibility[key] ? 1 : 0.5 }}>
-            <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium">{BLOCK_LABELS[key]}</span>
-            <div className="flex items-center gap-2">
-              <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 border rounded-sm disabled:opacity-30" style={{ borderColor: cfg.colors.line }}>
-                <ArrowUp size={14} />
-              </button>
-              <button type="button" onClick={() => move(i, 1)} disabled={i === layout.length - 1} className="p-1.5 border rounded-sm disabled:opacity-30" style={{ borderColor: cfg.colors.line }}>
-                <ArrowDown size={14} />
-              </button>
-              <label className="flex items-center gap-1.5 text-xs ml-2" style={sans}>
-                <input type="checkbox" checked={cfg.homeVisibility[key]} onChange={() => toggleVisible(key)} />
-                Visible
-              </label>
+    <div className="max-w-xl space-y-8">
+      <div>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">
+          Orden de la página de inicio
+        </h4>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">
+          Cambia el orden de los bloques con las flechas, o desactívalos si no quieres que aparezcan.
+        </p>
+        <div className="space-y-2">
+          {layout.map((key, i) => (
+            <div key={key} className="flex items-center justify-between gap-3 p-3 border" style={{ borderColor: cfg.colors.line, opacity: cfg.homeVisibility[key] ? 1 : 0.5 }}>
+              <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium">{BLOCK_LABELS[key]}</span>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => move(i, -1)} disabled={i === 0} className="p-1.5 border rounded-sm disabled:opacity-30" style={{ borderColor: cfg.colors.line }}>
+                  <ArrowUp size={14} />
+                </button>
+                <button type="button" onClick={() => move(i, 1)} disabled={i === layout.length - 1} className="p-1.5 border rounded-sm disabled:opacity-30" style={{ borderColor: cfg.colors.line }}>
+                  <ArrowDown size={14} />
+                </button>
+                <label className="flex items-center gap-1.5 text-xs ml-2" style={sans}>
+                  <input type="checkbox" checked={cfg.homeVisibility[key]} onChange={() => toggleVisible(key)} />
+                  Visible
+                </label>
+              </div>
             </div>
-          </div>
-        ))}
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">
+          Tamaño de las imágenes
+        </h4>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-3">
+          Ajusta la altura de las imágenes que publicas en distintos sitios de la web.
+        </p>
+        <SizeControlRow
+          label="Banner de cabecera (Civil / Militar)"
+          size={cfg.contentSizes.banner}
+          onSizeChange={(v) => updateContentSize("banner", v)}
+          min={80}
+          max={480}
+          colors={cfg.colors}
+          sans={sans}
+        />
+        <SizeControlRow
+          label="Portada de artículo (en tarjetas)"
+          size={cfg.contentSizes.articleCardCover}
+          onSizeChange={(v) => updateContentSize("articleCardCover", v)}
+          min={60}
+          max={320}
+          colors={cfg.colors}
+          sans={sans}
+        />
+        <SizeControlRow
+          label="Portada de artículo (artículo completo)"
+          size={cfg.contentSizes.articleDetailCover}
+          onSizeChange={(v) => updateContentSize("articleDetailCover", v)}
+          min={100}
+          max={600}
+          colors={cfg.colors}
+          sans={sans}
+        />
       </div>
     </div>
   );
