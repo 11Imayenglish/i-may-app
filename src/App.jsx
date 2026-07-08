@@ -2218,6 +2218,26 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Categorías (labels + emoji icons)                      */
 /* ------------------------------------------------------------------ */
+function LibraryPicker({ library, onPick }) {
+  if (!library.length) return null;
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap mt-2 pt-2 border-t" style={{ borderColor: "#E5DECB" }}>
+      {library.map((item) => (
+        <button
+          key={item.id}
+          type="button"
+          onClick={() => onPick(item.value)}
+          title={item.label}
+          className="w-8 h-8 flex items-center justify-center border rounded-sm hover:opacity-70"
+          style={{ borderColor: "#E5DECB" }}
+        >
+          <EmojiPreview value={item.value} size={18} />
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function CategoriesTab({ cfg, updateConfig }) {
   const { sans, serif } = useTheme();
   return (
@@ -2225,25 +2245,31 @@ function CategoriesTab({ cfg, updateConfig }) {
       <div>
         <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">Categorías de ejercicio</h4>
         <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">
-          Cambia el nombre visible de cada categoría y, si quieres, sustituye su icono por un emoji propio (déjalo vacío para usar el icono por defecto).
+          Cambia el nombre visible de cada categoría y, si quieres, sustituye su icono por un emoji propio (déjalo vacío para usar el
+          icono por defecto). Si has guardado imágenes en tu biblioteca (pestaña "Emojis"), pulsa una miniatura para usarla aquí.
         </p>
         <div className="space-y-4">
           {CATEGORY_KEYS.map((key) => (
-            <div key={key} className="flex items-center gap-3 p-3 border" style={{ borderColor: cfg.colors.line }}>
-              <input
-                value={cfg.icons[key]}
-                onChange={(e) => updateConfig({ icons: { ...cfg.icons, [key]: e.target.value } })}
-                maxLength={4}
-                className="w-14 h-10 border text-center text-lg"
-                style={{ borderColor: cfg.colors.line }}
-                placeholder="🔤"
-              />
-              <input
-                value={cfg.categoryLabels[key]}
-                onChange={(e) => updateConfig({ categoryLabels: { ...cfg.categoryLabels, [key]: e.target.value } })}
-                className="flex-1 border px-3 py-2 text-sm"
-                style={{ ...sans, borderColor: cfg.colors.line }}
-              />
+            <div key={key} className="p-3 border" style={{ borderColor: cfg.colors.line }}>
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-10 border flex items-center justify-center shrink-0" style={{ borderColor: cfg.colors.line }}>
+                  <EmojiPreview value={cfg.icons[key]} size={22} />
+                </div>
+                <input
+                  value={cfg.icons[key]}
+                  onChange={(e) => updateConfig({ icons: { ...cfg.icons, [key]: e.target.value } })}
+                  className="flex-1 border px-3 py-2 text-xs font-mono"
+                  style={{ borderColor: cfg.colors.line }}
+                  placeholder="🔤 o elige de tu biblioteca abajo"
+                />
+                <input
+                  value={cfg.categoryLabels[key]}
+                  onChange={(e) => updateConfig({ categoryLabels: { ...cfg.categoryLabels, [key]: e.target.value } })}
+                  className="flex-1 border px-3 py-2 text-sm"
+                  style={{ ...sans, borderColor: cfg.colors.line }}
+                />
+              </div>
+              <LibraryPicker library={cfg.emojiLibrary} onPick={(v) => updateConfig({ icons: { ...cfg.icons, [key]: v } })} />
             </div>
           ))}
         </div>
@@ -2254,16 +2280,21 @@ function CategoriesTab({ cfg, updateConfig }) {
         <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">Emoji opcional para Civil y Militar en el selector de la barra superior.</p>
         <div className="space-y-3">
           {["civil", "military"].map((key) => (
-            <div key={key} className="flex items-center gap-3 p-3 border" style={{ borderColor: cfg.colors.line }}>
-              <input
-                value={cfg.trackIcons[key]}
-                onChange={(e) => updateConfig({ trackIcons: { ...cfg.trackIcons, [key]: e.target.value } })}
-                maxLength={4}
-                className="w-14 h-10 border text-center text-lg"
-                style={{ borderColor: cfg.colors.line }}
-                placeholder={key === "civil" ? "💼" : "🛡️"}
-              />
-              <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm">{cfg.copy[key].label}</span>
+            <div key={key} className="p-3 border" style={{ borderColor: cfg.colors.line }}>
+              <div className="flex items-center gap-3">
+                <div className="w-14 h-10 border flex items-center justify-center shrink-0" style={{ borderColor: cfg.colors.line }}>
+                  <EmojiPreview value={cfg.trackIcons[key]} size={22} />
+                </div>
+                <input
+                  value={cfg.trackIcons[key]}
+                  onChange={(e) => updateConfig({ trackIcons: { ...cfg.trackIcons, [key]: e.target.value } })}
+                  className="flex-1 border px-3 py-2 text-xs font-mono"
+                  style={{ borderColor: cfg.colors.line }}
+                  placeholder={key === "civil" ? "💼" : "🛡️"}
+                />
+                <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm">{cfg.copy[key].label}</span>
+              </div>
+              <LibraryPicker library={cfg.emojiLibrary} onPick={(v) => updateConfig({ trackIcons: { ...cfg.trackIcons, [key]: v } })} />
             </div>
           ))}
         </div>
@@ -2288,6 +2319,7 @@ function EmojisTab({ cfg, updateConfig }) {
   const [label, setLabel] = useState("");
   const [value, setValue] = useState("");
   const [copiedId, setCopiedId] = useState(null);
+  const [uploadBusy, setUploadBusy] = useState(false);
 
   function addItem(e) {
     e.preventDefault();
@@ -2296,6 +2328,21 @@ function EmojisTab({ cfg, updateConfig }) {
     updateConfig({ emojiLibrary: [item, ...cfg.emojiLibrary] });
     setLabel("");
     setValue("");
+  }
+
+  async function handleUploadIcon(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadBusy(true);
+    try {
+      const url = await api.uploadFile(file, "icons");
+      setValue(url);
+      if (!label.trim()) setLabel(file.name.replace(/\.[^.]+$/, ""));
+    } catch {
+      /* leave the form as-is so the admin can retry */
+    }
+    setUploadBusy(false);
+    e.target.value = "";
   }
 
   function removeItem(id) {
@@ -2328,8 +2375,15 @@ function EmojisTab({ cfg, updateConfig }) {
             <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ej. Estrella dorada" className="mt-1 border px-3 py-2 text-sm w-40" style={{ borderColor: cfg.colors.line }} />
           </label>
           <label className="text-sm flex-1 min-w-[220px]" style={sans}>
-            Emoji, URL o base64
-            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="⭐ o https://… o data:image/png;base64,…" className="mt-1 w-full border px-3 py-2 text-sm font-mono" style={{ borderColor: cfg.colors.line }} />
+            Emoji, o URL/base64 de una imagen
+            <input value={value} onChange={(e) => setValue(e.target.value)} placeholder="⭐ o sube una imagen →" className="mt-1 w-full border px-3 py-2 text-sm font-mono" style={{ borderColor: cfg.colors.line }} />
+          </label>
+          <label
+            className="inline-flex items-center gap-2 px-3 py-2 text-xs font-semibold rounded-sm cursor-pointer w-fit mb-[1px]"
+            style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: uploadBusy ? 0.5 : 1 }}
+          >
+            {uploadBusy ? "Subiendo…" : "Subir imagen"}
+            <input type="file" accept="image/*" onChange={handleUploadIcon} disabled={uploadBusy} className="hidden" />
           </label>
           <div className="flex items-center gap-2 pb-1">
             <EmojiPreview value={value} size={26} />
