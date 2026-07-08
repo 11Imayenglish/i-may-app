@@ -35,7 +35,8 @@ create table if not exists articles (
   cover_image_url text default '',
   excerpt text default '',
   body text default '',
-  date_added timestamptz not null default now()
+  date_added timestamptz not null default now(),
+  icon text default ''
 );
 
 create table if not exists materials (

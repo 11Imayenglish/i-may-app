@@ -149,6 +149,7 @@ function rowToArticle(r) {
     excerpt: r.excerpt || "",
     body: r.body || "",
     dateAdded: r.date_added,
+    icon: r.icon || "",
   };
 }
 
@@ -165,6 +166,7 @@ export async function insertArticle(a) {
     cover_image_url: a.coverImageUrl,
     excerpt: a.excerpt,
     body: a.body,
+    icon: a.icon || "",
   };
   const { data, error } = await supabase.from("articles").insert(row).select().single();
   if (error) throw error;

@@ -970,7 +970,8 @@ function ArticleCard({ article, onOpen, accent }) {
         <div style={{ ...sans, color: "#5B6472" }} className="text-xs mb-1 flex items-center gap-1">
           <Clock size={11} /> {formatDate(article.dateAdded)}
         </div>
-        <div style={{ ...serif, color: colors.ink }} className="text-base font-semibold mb-1 leading-snug">
+        <div style={{ ...serif, color: colors.ink }} className="text-base font-semibold mb-1 leading-snug flex items-center gap-1.5">
+          {article.icon && <EmojiPreview value={article.icon} size={16} />}
           {article.title}
         </div>
         <div style={{ ...sans, color: "#5B6472" }} className="text-sm line-clamp-3">
@@ -1048,7 +1049,8 @@ function ArticleDetail({ article, setView }) {
       <div style={{ ...sans, color: "#5B6472" }} className="text-xs mb-2 flex items-center gap-1">
         <Clock size={12} /> {formatDate(article.dateAdded)}
       </div>
-      <h1 style={{ ...serif, color: colors.ink }} className="text-3xl font-semibold mb-6 leading-tight">
+      <h1 style={{ ...serif, color: colors.ink }} className="text-3xl font-semibold mb-6 leading-tight flex items-center gap-2">
+        {article.icon && <EmojiPreview value={article.icon} size={28} />}
         {article.title}
       </h1>
       <div style={{ ...sans, color: colors.ink }} className="space-y-4 text-[15px] leading-relaxed">
@@ -2764,7 +2766,7 @@ function ProgressTab({ users, submissions }) {
 /*  Admin — tab: Artículos (CRUD con imagen de portada)                 */
 /* ------------------------------------------------------------------ */
 function emptyArticleForm(track = "civil") {
-  return { track, title: "", coverImageUrl: "", excerpt: "", body: "" };
+  return { track, title: "", coverImageUrl: "", excerpt: "", body: "", icon: "" };
 }
 
 function ArticlesTab({ articles, setArticles, track }) {
@@ -2804,6 +2806,7 @@ function ArticlesTab({ articles, setArticles, track }) {
       coverImageUrl: form.coverImageUrl.trim(),
       excerpt: form.excerpt.trim() || form.body.trim().slice(0, 140),
       body: form.body.trim(),
+      icon: form.icon.trim(),
     };
     try {
       const created = await api.insertArticle(newArticle);
@@ -2844,6 +2847,22 @@ function ArticlesTab({ articles, setArticles, track }) {
             Título
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
           </label>
+          <div className="text-sm" style={sans}>
+            Icono del artículo (opcional — insignia junto al título)
+            <div className="flex items-center gap-3 mt-1">
+              <div className="w-10 h-10 border flex items-center justify-center shrink-0" style={{ borderColor: cfg.colors.line }}>
+                <EmojiPreview value={form.icon} size={20} />
+              </div>
+              <input
+                value={form.icon}
+                onChange={(e) => updateField("icon", e.target.value)}
+                placeholder="🔤 o elige de tu biblioteca abajo"
+                className="flex-1 border px-3 py-2 text-xs font-mono"
+                style={{ borderColor: cfg.colors.line }}
+              />
+            </div>
+            <LibraryPicker library={cfg.emojiLibrary} onPick={(v) => updateField("icon", v)} />
+          </div>
           <div className="text-sm" style={sans}>
             Imagen de portada (opcional)
             <div className="mt-1 flex items-center gap-3 flex-wrap">
