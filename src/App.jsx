@@ -121,6 +121,12 @@ const DEFAULT_CONFIG = {
   emojiLibrary: [],
   trackOverrides: { civil: null, military: null },
   trackBanners: { civil: "", military: "" },
+  logoLayout: {
+    navbar: { size: 44 },
+    home: { size: 80, align: "left" },
+    login: { size: 56, align: "center" },
+    footer: { size: 32 },
+  },
   copy: {
     bulletinTitle: "Boletín del Día",
     ctaPrimary: "Comenzar la lección de hoy",
@@ -160,6 +166,12 @@ function mergeConfig(saved) {
     emojiLibrary: Array.isArray(s.emojiLibrary) ? s.emojiLibrary : DEFAULT_CONFIG.emojiLibrary,
     trackOverrides: { civil: null, military: null, ...(s.trackOverrides || {}) },
     trackBanners: { ...DEFAULT_CONFIG.trackBanners, ...(s.trackBanners || {}) },
+    logoLayout: {
+      navbar: { ...DEFAULT_CONFIG.logoLayout.navbar, ...(s.logoLayout?.navbar || {}) },
+      home: { ...DEFAULT_CONFIG.logoLayout.home, ...(s.logoLayout?.home || {}) },
+      login: { ...DEFAULT_CONFIG.logoLayout.login, ...(s.logoLayout?.login || {}) },
+      footer: { ...DEFAULT_CONFIG.logoLayout.footer, ...(s.logoLayout?.footer || {}) },
+    },
     copy: {
       ...DEFAULT_CONFIG.copy,
       ...(s.copy || {}),
@@ -167,6 +179,10 @@ function mergeConfig(saved) {
       military: { ...DEFAULT_CONFIG.copy.military, ...(s.copy?.military || {}) },
     },
   };
+}
+
+function alignToJustify(align) {
+  return align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start";
 }
 
 const CATEGORY_KEYS = ["grammar", "listening", "reading", "writing"];
@@ -306,7 +322,7 @@ function Navbar({ view, setView, track, setTrack }) {
       <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between gap-4 flex-wrap">
         <button className="flex items-center" onClick={() => go("home")}>
           {cfg.showLogoImage ? (
-            <img src={logoSrc} alt={cfg.siteName} className="h-11 w-auto" />
+            <img src={logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.navbar.size }} className="w-auto" />
           ) : (
             <span style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold">
               {cfg.siteName}
@@ -457,7 +473,11 @@ function IntroBlock({ exercises, setView, track }) {
       )}
       <section className="max-w-6xl mx-auto px-6 pt-14 pb-10 grid md:grid-cols-[1.1fr_0.9fr] gap-10 items-start">
       <div>
-        {cfg.showLogoImage && <img src={logoSrc} alt={cfg.siteName} className="h-20 md:h-24 w-auto mb-8" />}
+        {cfg.showLogoImage && (
+          <div className="mb-8" style={{ display: "flex", justifyContent: alignToJustify(cfg.logoLayout.home.align) }}>
+            <img src={logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.home.size }} className="w-auto" />
+          </div>
+        )}
         <div style={{ ...sans, color: t.accent }} className="text-xs uppercase tracking-[0.2em] font-semibold mb-4">
           {t.eyebrow}
         </div>
@@ -1047,7 +1067,11 @@ function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup,
   return (
     <div className="max-w-sm mx-auto px-6 py-20">
       <div className="flex flex-col items-center text-center mb-8">
-        {cfg.showLogoImage && <img src={logoSrc} alt={cfg.siteName} className="h-14 w-auto mb-6" />}
+        {cfg.showLogoImage && (
+          <div className="w-full mb-6" style={{ display: "flex", justifyContent: alignToJustify(cfg.logoLayout.login.align) }}>
+            <img src={logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.login.size }} className="w-auto" />
+          </div>
+        )}
         <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-1">
           {title}
         </h2>
@@ -1171,7 +1195,11 @@ function PasswordRecoveryScreen({ onDone }) {
   return (
     <div className="max-w-sm mx-auto px-6 py-20">
       <div className="flex flex-col items-center text-center mb-8">
-        {cfg.showLogoImage && <img src={logoSrc} alt={cfg.siteName} className="h-14 w-auto mb-6" />}
+        {cfg.showLogoImage && (
+          <div className="w-full mb-6" style={{ display: "flex", justifyContent: alignToJustify(cfg.logoLayout.login.align) }}>
+            <img src={logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.login.size }} className="w-auto" />
+          </div>
+        )}
         <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-1">
           Elige una contraseña nueva
         </h2>
@@ -1783,7 +1811,23 @@ function TrackAppearanceEditor({ cfg, updateConfig }) {
     banner: cfg.trackBanners[selectedTrack] || "",
   });
   const [message, setMessage] = useState("");
+  const [bannerBusy, setBannerBusy] = useState(false);
   const isCustomized = !!cfg.trackOverrides[selectedTrack];
+
+  async function handleUploadBanner(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBannerBusy(true);
+    try {
+      const url = await api.uploadImage(file, "banners");
+      setDraft((d) => ({ ...d, banner: url }));
+      setMessage("Imagen subida. Pulsa \"Aplicar\" para usarla.");
+    } catch {
+      setMessage("No se pudo subir la imagen. Inténtalo de nuevo.");
+    }
+    setBannerBusy(false);
+    e.target.value = "";
+  }
 
   function switchTrack(key) {
     const eff = { ...cfg.colors, ...(cfg.trackOverrides[key] || {}) };
@@ -1838,16 +1882,25 @@ function TrackAppearanceEditor({ cfg, updateConfig }) {
           <ColorField label="Fondo de página" value={draft.bg} onChange={(v) => setDraft((d) => ({ ...d, bg: v }))} />
           <ColorField label="Fondo de tarjetas" value={draft.card} onChange={(v) => setDraft((d) => ({ ...d, card: v }))} />
           <ColorField label="Líneas y bordes" value={draft.line} onChange={(v) => setDraft((d) => ({ ...d, line: v }))} />
-          <label className="text-sm block pt-2" style={sans}>
+          <div className="text-sm pt-2" style={sans}>
             Imagen de cabecera / banner (opcional)
+            <div className="mt-1">
+              <label
+                className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: bannerBusy ? 0.5 : 1 }}
+              >
+                {bannerBusy ? "Subiendo…" : "Subir imagen"}
+                <input type="file" accept="image/*" onChange={handleUploadBanner} disabled={bannerBusy} className="hidden" />
+              </label>
+            </div>
             <input
               value={draft.banner}
               onChange={(e) => setDraft((d) => ({ ...d, banner: e.target.value }))}
-              placeholder="https://… o data:image/…;base64,…"
-              className="mt-1 w-full border px-3 py-2 text-xs font-mono"
+              placeholder="o pega un enlace: https://… / data:image/…;base64,…"
+              className="mt-2 w-full border px-3 py-2 text-xs font-mono"
               style={{ borderColor: cfg.colors.line }}
             />
-          </label>
+          </div>
           <div className="flex items-center gap-3 pt-2">
             <button type="button" onClick={apply} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
               Aplicar a {cfg.copy[selectedTrack].label}
@@ -1887,6 +1940,40 @@ function TrackAppearanceEditor({ cfg, updateConfig }) {
   );
 }
 
+function LogoLayoutRow({ label, size, onSizeChange, align, onAlignChange, colors, sans }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-b flex-wrap" style={{ borderColor: colors.line }}>
+      <span style={{ ...sans, color: colors.ink }} className="text-sm">{label}</span>
+      <div className="flex items-center gap-3">
+        <input
+          type="range"
+          min={20}
+          max={160}
+          value={size}
+          onChange={(e) => onSizeChange(Number(e.target.value))}
+          className="w-28"
+        />
+        <span style={{ ...sans, color: "#5B6472" }} className="text-xs w-10 text-right">{size}px</span>
+        {onAlignChange && (
+          <div className="flex items-center border rounded-full p-0.5" style={{ borderColor: colors.line }}>
+            {[["left", "Izq."], ["center", "Centro"], ["right", "Der."]].map(([key, lbl]) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => onAlignChange(key)}
+                className="px-2 py-1 rounded-full text-[10px] font-semibold"
+                style={{ ...sans, backgroundColor: align === key ? colors.ink : "transparent", color: align === key ? colors.bg : "#5B6472" }}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClearCustomLogo }) {
   const { sans, serif } = useTheme();
   const [logoInput, setLogoInput] = useState(customLogo || "");
@@ -1901,12 +1988,32 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
     setLogoMessage(ok ? "Logotipo actualizado." : "No se pudo guardar. Comprueba que el enlace o el texto no esté roto.");
   }
 
+  async function handleUploadLogo(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLogoBusy(true);
+    try {
+      const url = await api.uploadImage(file, "logo");
+      const ok = await onSetCustomLogo(url);
+      setLogoInput(url);
+      setLogoMessage(ok ? "Logotipo actualizado." : "No se pudo guardar.");
+    } catch {
+      setLogoMessage("No se pudo subir la imagen. Inténtalo de nuevo.");
+    }
+    setLogoBusy(false);
+    e.target.value = "";
+  }
+
   async function handleClearLogo() {
     setLogoBusy(true);
     await onClearCustomLogo();
     setLogoInput("");
     setLogoBusy(false);
     setLogoMessage("Se ha restaurado el logotipo original.");
+  }
+
+  function updateLogoLayout(location, patch) {
+    updateConfig({ logoLayout: { ...cfg.logoLayout, [location]: { ...cfg.logoLayout[location], ...patch } } });
   }
 
   return (
@@ -1928,8 +2035,17 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
             <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Tu propio logotipo</span>
           </div>
           <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
-            Pega aquí el enlace a una imagen que hayas subido a algún sitio, o directamente el texto en base64 de tu archivo (así no
-            necesitas alojarlo en ningún sitio). Sustituye al logotipo actual en la barra superior y en el pie de página.
+            Sube una imagen directamente desde tu ordenador. Sustituye al logotipo actual en toda la web.
+          </p>
+          <label
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-sm cursor-pointer w-fit"
+            style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: logoBusy ? 0.5 : 1 }}
+          >
+            {logoBusy ? "Subiendo…" : "Subir imagen"}
+            <input type="file" accept="image/*" onChange={handleUploadLogo} disabled={logoBusy} className="hidden" />
+          </label>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-xs pt-2">
+            O, si lo prefieres, pega el enlace a una imagen ya alojada en algún sitio (o su base64):
           </p>
           <textarea
             value={logoInput}
@@ -1964,6 +2080,46 @@ function AppearanceTab({ cfg, updateConfig, customLogo, onSetCustomLogo, onClear
             )}
           </div>
           {logoMessage && <p style={{ ...sans, color: "#5B6472" }} className="text-xs">{logoMessage}</p>}
+        </div>
+
+        <div className="mt-6">
+          <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">Tamaño y posición del logo</h4>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-3">
+            Ajusta el tamaño del logo en cada sitio de la web donde aparece. En la portada y en la pantalla de acceso también puedes
+            elegir si va a la izquierda, al centro o a la derecha.
+          </p>
+          <LogoLayoutRow
+            label="Barra de navegación"
+            size={cfg.logoLayout.navbar.size}
+            onSizeChange={(v) => updateLogoLayout("navbar", { size: v })}
+            colors={cfg.colors}
+            sans={sans}
+          />
+          <LogoLayoutRow
+            label="Portada"
+            size={cfg.logoLayout.home.size}
+            onSizeChange={(v) => updateLogoLayout("home", { size: v })}
+            align={cfg.logoLayout.home.align}
+            onAlignChange={(a) => updateLogoLayout("home", { align: a })}
+            colors={cfg.colors}
+            sans={sans}
+          />
+          <LogoLayoutRow
+            label="Acceso / registro"
+            size={cfg.logoLayout.login.size}
+            onSizeChange={(v) => updateLogoLayout("login", { size: v })}
+            align={cfg.logoLayout.login.align}
+            onAlignChange={(a) => updateLogoLayout("login", { align: a })}
+            colors={cfg.colors}
+            sans={sans}
+          />
+          <LogoLayoutRow
+            label="Pie de página"
+            size={cfg.logoLayout.footer.size}
+            onSizeChange={(v) => updateLogoLayout("footer", { size: v })}
+            colors={cfg.colors}
+            sans={sans}
+          />
         </div>
       </div>
 
@@ -3207,7 +3363,7 @@ export default function App() {
           <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               {cfg.showLogoImage ? (
-                <img src={theme.logoSrc} alt={cfg.siteName} className="h-8 w-auto" />
+                <img src={theme.logoSrc} alt={cfg.siteName} style={{ height: cfg.logoLayout.footer.size }} className="w-auto" />
               ) : (
                 <span style={{ ...theme.serif, color: cfg.colors.ink }} className="text-sm font-semibold">{cfg.siteName}</span>
               )}

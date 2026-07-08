@@ -210,6 +210,22 @@ create policy "writing_drafts: update own" on writing_drafts for update
   using (user_id = auth.uid());
 
 -- ------------------------------------------------------------------
+-- Storage bucket for uploaded images (logo, banners, etc.)
+-- ------------------------------------------------------------------
+insert into storage.buckets (id, name, public)
+values ('media', 'media', true)
+on conflict (id) do nothing;
+
+create policy "media: public read" on storage.objects for select
+  using (bucket_id = 'media');
+create policy "media: admin uploads" on storage.objects for insert
+  with check (bucket_id = 'media' and public.is_admin());
+create policy "media: admin updates" on storage.objects for update
+  using (bucket_id = 'media' and public.is_admin());
+create policy "media: admin deletes" on storage.objects for delete
+  using (bucket_id = 'media' and public.is_admin());
+
+-- ------------------------------------------------------------------
 -- Bootstrap the singleton site_config row
 -- ------------------------------------------------------------------
 insert into site_config (id, data) values (1, '{}'::jsonb)

@@ -276,6 +276,18 @@ export async function saveWritingDraft(userId, exerciseId, content) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Image uploads (logo, banners — stored in the public "media" bucket) */
+/* ------------------------------------------------------------------ */
+export async function uploadImage(file, folder = "uploads") {
+  const ext = file.name.split(".").pop();
+  const path = `${folder}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage.from("media").upload(path, file, { cacheControl: "3600", upsert: false });
+  if (error) throw error;
+  const { data } = supabase.storage.from("media").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Site config (colors, fonts, copy, layout — singleton row)           */
 /* ------------------------------------------------------------------ */
 export async function fetchSiteConfig() {
