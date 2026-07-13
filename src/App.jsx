@@ -2114,7 +2114,17 @@ At home`}
                       </label>
                     ))}
                   </div>
-                  <input value={q.explanation} onChange={(e) => updateQuestion(qi, "explanation", e.target.value)} placeholder="Explicación (opcional)" className="w-full border px-3 py-1.5 text-xs" style={{ borderColor: cfg.colors.line }} />
+                  <label className="text-xs block" style={sans}>
+                    Justificación de la respuesta (opcional — puedes citar el fragmento del texto/audio original)
+                    <textarea
+                      value={q.explanation}
+                      onChange={(e) => updateQuestion(qi, "explanation", e.target.value)}
+                      placeholder={'Ej. "...cita textual del pasaje original..." — por eso la respuesta correcta es...'}
+                      rows={2}
+                      className="mt-1 w-full border px-3 py-1.5 text-xs"
+                      style={{ borderColor: cfg.colors.line }}
+                    />
+                  </label>
                 </div>
               ))}
             </div>
