@@ -3975,6 +3975,19 @@ export default function App() {
 
   const currentUser = profile;
 
+  // Listening/Reading show one random exam per visit instead of a pickable list.
+  // Keyed on the `view` object identity, not just its name, so a fresh click on
+  // "Listening" (a new {name:"listening"} object) rerolls the pick, but an
+  // unrelated re-render of App (e.g. after submitting an answer) does not swap
+  // out the exam the student is in the middle of.
+  const randomCategoryExerciseId = useMemo(() => {
+    if (view.name !== "listening" && view.name !== "reading") return null;
+    const pool = (exercises || []).filter((e) => e.type === view.name && e.track === track);
+    if (!pool.length) return null;
+    return pool[Math.floor(Math.random() * pool.length)].id;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, exercises, track]);
+
   if (exercises === null || articles === null || materials === null || !authReady) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cfg.colors.bg }}>
@@ -4001,6 +4014,23 @@ export default function App() {
       ) : (
         <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
       );
+  } else if (view.name === "listening" || view.name === "reading") {
+    const exercise = randomCategoryExerciseId ? exercises.find((e) => e.id === randomCategoryExerciseId) : null;
+    const priorSubmission = currentUser && exercise ? submissions.find((s) => s.userId === currentUser.id && s.exerciseId === exercise.id) : null;
+    content = exercise ? (
+      <ExerciseDetail
+        exercise={exercise}
+        setView={setView}
+        track={track}
+        currentUser={currentUser}
+        priorSubmission={priorSubmission}
+        onRecordSubmission={recordSubmission}
+      />
+    ) : (
+      <div className="max-w-3xl mx-auto px-6 py-12">
+        Todavía no hay exámenes de {cfg.categoryLabels[view.name]} publicados en esta área.
+      </div>
+    );
   } else if (CATEGORY_KEYS.includes(view.name)) {
     content = <CategoryList type={view.name} exercises={exercises} materials={materials} setView={setView} focusId={view.focusId} track={track} submissions={submissions} currentUser={currentUser} />;
   } else if (view.name === "detail") {
