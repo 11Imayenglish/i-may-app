@@ -1790,14 +1790,17 @@ function parseBulkQuestions(text) {
         .map((l) => l.trim())
         .filter(Boolean);
       if (lines.length < 2) return null;
-      const [question, ...optionLines] = lines;
+      const [question, ...rest] = lines;
+      // Up to 4 option lines; anything after that is the (optional) justification.
+      const optionLines = rest.slice(0, 4);
+      const explanationLines = rest.slice(4);
       let correctIndex = 0;
       const options = optionLines.map((line, i) => {
         const isCorrect = /\*\s*$/.test(line);
         if (isCorrect) correctIndex = i;
         return line.replace(/\*\s*$/, "").trim();
       });
-      return { id: uid(), question, options, correctIndex, explanation: "" };
+      return { id: uid(), question, options, correctIndex, explanation: explanationLines.join(" ").trim() };
     })
     .filter(Boolean);
 }
@@ -2062,8 +2065,9 @@ function ContentTab({ exercises, setExercises, track }) {
                 <div className="p-4 border space-y-2" style={{ borderColor: cfg.colors.line, backgroundColor: mix(cfg.colors.ink, "#ffffff", 0.96) }}>
                   <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
                     Pensado para exámenes tipo con muchas preguntas. Pega un bloque por pregunta, separado por una línea en blanco: la
-                    primera línea es la pregunta, las siguientes son las opciones, y marcas la correcta añadiendo un asterisco (*) al
-                    final de esa línea. Ejemplo:
+                    primera línea es la pregunta, las 4 siguientes son las opciones (marca la correcta con un asterisco * al final de esa
+                    línea), y si añades una línea más debajo de las opciones, se guarda como justificación de la respuesta (por ejemplo,
+                    citando el texto o audio original). Esa línea es opcional. Ejemplo:
                   </p>
                   <pre style={{ ...sans, color: cfg.colors.ink, borderColor: cfg.colors.line }} className="text-xs bg-white border p-2 whitespace-pre-wrap">
 {`What is the past participle of "go"?
@@ -2071,6 +2075,7 @@ Went
 Gone *
 Going
 Goes
+The text says: "...she had already gone home by the time..."
 
 Where was the meeting held?
 In the office
