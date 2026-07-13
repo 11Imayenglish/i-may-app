@@ -59,6 +59,7 @@ function rowToProfile(r) {
     createdAt: r.created_at,
     plan: r.plan,
     planStartDate: r.plan_start_date,
+    level: r.level || "",
   };
 }
 
@@ -75,6 +76,11 @@ export async function updateProfileStatus(id, status) {
 
 export async function updateProfilePlan(id, plan, planStartDate) {
   const { error } = await supabase.from("profiles").update({ plan, plan_start_date: planStartDate || null }).eq("id", id);
+  if (error) throw error;
+}
+
+export async function updateProfileLevel(id, level) {
+  const { error } = await supabase.from("profiles").update({ level: level || null }).eq("id", id);
   if (error) throw error;
 }
 
@@ -255,6 +261,7 @@ function rowToMaterial(r) {
     fileUrl: r.file_url || "",
     fileName: r.file_name || "",
     dateAdded: r.date_added,
+    level: r.level || "",
   };
 }
 
@@ -273,6 +280,7 @@ export async function insertMaterial(m) {
     body: m.body,
     file_url: m.fileUrl,
     file_name: m.fileName,
+    level: m.level || null,
   };
   const { data, error } = await supabase.from("materials").insert(row).select().single();
   if (error) throw error;

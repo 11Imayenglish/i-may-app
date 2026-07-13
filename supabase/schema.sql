@@ -12,7 +12,8 @@ create table if not exists profiles (
   is_admin boolean not null default false,
   created_at timestamptz not null default now(),
   plan text not null default 'individual' check (plan in ('individual','3months','6months')),
-  plan_start_date date
+  plan_start_date date,
+  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4'))
 );
 
 create table if not exists exercises (
@@ -62,7 +63,8 @@ create table if not exists materials (
   body text default '',
   file_url text default '',
   file_name text default '',
-  date_added timestamptz not null default now()
+  date_added timestamptz not null default now(),
+  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4'))
 );
 
 create table if not exists submissions (
@@ -125,6 +127,7 @@ begin
     new.status := old.status;
     new.plan := old.plan;
     new.plan_start_date := old.plan_start_date;
+    new.level := old.level;
   end if;
   return new;
 end;

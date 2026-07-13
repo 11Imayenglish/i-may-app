@@ -203,6 +203,15 @@ const LEVELS_BY_TRACK = {
   civil: ["A2", "B1", "B2", "C1"],
   military: ["SLP1", "SLP2", "SLP3", "SLP4"],
 };
+const ALL_LEVELS = [...LEVELS_BY_TRACK.civil, ...LEVELS_BY_TRACK.military];
+
+// A student with no assigned level sees everything; content with no assigned
+// level (old exercises/materials, or theory meant for everyone) is visible to
+// everyone regardless of their level.
+function matchesLevel(itemLevel, userLevel) {
+  if (!userLevel || !itemLevel) return true;
+  return itemLevel === userLevel;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Theme context — every component reads live config from here        */
@@ -468,11 +477,14 @@ function Navbar({ view, setView, track, setTrack }) {
 /* ------------------------------------------------------------------ */
 /*  Home                                                                */
 /* ------------------------------------------------------------------ */
-function IntroBlock({ exercises, setView, track }) {
+function IntroBlock({ exercises, setView, track, userLevel }) {
   const { cfg, colors, serif, sans, trackInfo, logoSrc, bannerUrl } = useTheme();
   const t = trackInfo(track);
   const today = new Date();
-  const trackExercises = useMemo(() => exercises.filter((e) => e.track === track), [exercises, track]);
+  const trackExercises = useMemo(
+    () => exercises.filter((e) => e.track === track && matchesLevel(e.level, userLevel)),
+    [exercises, track, userLevel]
+  );
   const recent = useMemo(
     () => [...trackExercises].filter((e) => isRecent(e.dateAdded)).sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)).slice(0, 5),
     [trackExercises]
@@ -568,10 +580,13 @@ function IntroBlock({ exercises, setView, track }) {
   );
 }
 
-function CategoriesBlock({ exercises, setView, track }) {
+function CategoriesBlock({ exercises, setView, track, userLevel }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
-  const trackExercises = useMemo(() => exercises.filter((e) => e.track === track), [exercises, track]);
+  const trackExercises = useMemo(
+    () => exercises.filter((e) => e.track === track && matchesLevel(e.level, userLevel)),
+    [exercises, track, userLevel]
+  );
   const counts = useMemo(() => {
     const c = { grammar: 0, listening: 0, reading: 0, writing: 0 };
     trackExercises.forEach((e) => (c[e.type] = (c[e.type] || 0) + 1));
@@ -679,11 +694,12 @@ function PublicHome({ articles, reviews, setView, track }) {
   );
 }
 
-function Home({ exercises, articles, setView, track }) {
+function Home({ exercises, articles, setView, track, currentUser }) {
   const { cfg } = useTheme();
+  const userLevel = currentUser?.level;
   const blocks = {
-    intro: <IntroBlock exercises={exercises} setView={setView} track={track} />,
-    categories: <CategoriesBlock exercises={exercises} setView={setView} track={track} />,
+    intro: <IntroBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
+    categories: <CategoriesBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
     articles: <ArticlesBlock articles={articles} setView={setView} track={track} />,
   };
   return <div>{cfg.homeLayout.filter((key) => cfg.homeVisibility[key]).map((key) => <div key={key}>{blocks[key]}</div>)}</div>;
@@ -692,13 +708,16 @@ function Home({ exercises, articles, setView, track }) {
 /* ------------------------------------------------------------------ */
 /*  Category list                                                       */
 /* ------------------------------------------------------------------ */
-function MaterialsSection({ materials, type, track }) {
+function MaterialsSection({ materials, type, track, userLevel }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
   const [openId, setOpenId] = useState(null);
   const list = useMemo(
-    () => materials.filter((m) => m.category === type && m.track === track).sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)),
-    [materials, type, track]
+    () =>
+      materials
+        .filter((m) => m.category === type && m.track === track && matchesLevel(m.level, userLevel))
+        .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)),
+    [materials, type, track, userLevel]
   );
   if (list.length === 0) return null;
 
@@ -739,18 +758,19 @@ function MaterialsSection({ materials, type, track }) {
   );
 }
 
-function TemarioView({ materials, track, setView }) {
+function TemarioView({ materials, track, setView, currentUser }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
+  const userLevel = currentUser?.level;
   const byCategory = useMemo(() => {
     const map = {};
     CATEGORY_KEYS.forEach((key) => {
       map[key] = materials
-        .filter((m) => m.track === track && m.category === key)
+        .filter((m) => m.track === track && m.category === key && matchesLevel(m.level, userLevel))
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
     });
     return map;
-  }, [materials, track]);
+  }, [materials, track, userLevel]);
   const hasAny = CATEGORY_KEYS.some((key) => byCategory[key].length > 0);
   const [openId, setOpenId] = useState(null);
 
@@ -817,9 +837,10 @@ function TemarioView({ materials, track, setView }) {
 function CategoryList({ type, exercises, materials, setView, focusId, track, submissions, currentUser }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
+  const userLevel = currentUser?.level;
   const list = useMemo(
-    () => exercises.filter((e) => e.type === type && e.track === track),
-    [exercises, type, track]
+    () => exercises.filter((e) => e.type === type && e.track === track && matchesLevel(e.level, userLevel)),
+    [exercises, type, track, userLevel]
   );
 
   function priorFor(exerciseId) {
@@ -837,10 +858,15 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
         <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep, ...sans }}>
           {t.label}
         </span>
+        {userLevel && (
+          <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded-sm border" style={{ borderColor: colors.line, color: "#5B6472", ...sans }}>
+            Tu nivel: {userLevel}
+          </span>
+        )}
       </div>
       <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
 
-      <MaterialsSection materials={materials} type={type} track={track} />
+      <MaterialsSection materials={materials} type={type} track={track} userLevel={userLevel} />
 
       {list.length === 0 ? (
         <p style={{ ...sans, color: "#5B6472" }}>
@@ -2951,6 +2977,14 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
       /* the list simply won't reflect the change; the controls remain editable to retry */
     }
   }
+  async function updateLevel(id, level) {
+    try {
+      await api.updateProfileLevel(id, level);
+      setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, level } : x)));
+    } catch {
+      /* the list simply won't reflect the change; the control remains editable to retry */
+    }
+  }
   async function handleDelete(id) {
     try {
       await api.deleteProfile(id);
@@ -3057,6 +3091,23 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
                   </label>
                 )}
                 <PlanBadge plan={u.plan || "individual"} planStartDate={u.planStartDate} colors={cfg.colors} sans={sans} />
+                <label className="text-xs flex items-center gap-1.5" style={sans}>
+                  Nivel:
+                  <select
+                    value={u.level || ""}
+                    onChange={(e) => updateLevel(u.id, e.target.value)}
+                    className="border px-2 py-1 text-xs"
+                    style={{ borderColor: cfg.colors.line }}
+                  >
+                    <option value="">Sin asignar (ve de todo)</option>
+                    <optgroup label="Civil">
+                      {LEVELS_BY_TRACK.civil.map((l) => <option key={l} value={l}>{l}</option>)}
+                    </optgroup>
+                    <optgroup label="Militar">
+                      {LEVELS_BY_TRACK.military.map((l) => <option key={l} value={l}>{l}</option>)}
+                    </optgroup>
+                  </select>
+                </label>
               </div>
             </li>
           ))}
@@ -3544,7 +3595,7 @@ function ReviewsTab({ reviews, setReviews }) {
 /*  Admin — tab: Recursos (teoría y documentos descargables)            */
 /* ------------------------------------------------------------------ */
 function emptyMaterialForm(track = "civil") {
-  return { track, category: "grammar", kind: "theory", title: "", body: "", fileUrl: "", fileName: "" };
+  return { track, category: "grammar", kind: "theory", title: "", body: "", fileUrl: "", fileName: "", level: "" };
 }
 
 function MaterialsTab({ materials, setMaterials, track }) {
@@ -3579,6 +3630,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
       body: form.body.trim(),
       fileUrl: form.fileUrl.trim(),
       fileName: form.fileName.trim(),
+      level: form.level,
     };
     try {
       const created = await api.insertMaterial(newMaterial);
@@ -3614,10 +3666,15 @@ function MaterialsTab({ materials, setMaterials, track }) {
           sitio, o el propio archivo convertido a base64 (igual que con las imágenes). El alumno lo descarga con un clic.
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid sm:grid-cols-3 gap-3">
+          <div className="grid sm:grid-cols-2 gap-3">
             <label className="text-sm" style={sans}>
               Área
-              <select value={form.track} onChange={(e) => updateField("track", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
+              <select
+                value={form.track}
+                onChange={(e) => { const track = e.target.value; setForm((f) => ({ ...f, track, level: "" })); }}
+                className="mt-1 w-full border px-3 py-2"
+                style={{ borderColor: cfg.colors.line }}
+              >
                 <option value="civil">{cfg.copy.civil.label}</option>
                 <option value="military">{cfg.copy.military.label}</option>
               </select>
@@ -3633,6 +3690,13 @@ function MaterialsTab({ materials, setMaterials, track }) {
               <select value={form.kind} onChange={(e) => updateField("kind", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
                 <option value="theory">Explicación teórica</option>
                 <option value="file">Documento descargable</option>
+              </select>
+            </label>
+            <label className="text-sm" style={sans}>
+              Nivel
+              <select value={form.level} onChange={(e) => updateField("level", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
+                <option value="">Todos los niveles</option>
+                {LEVELS_BY_TRACK[form.track].map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
             </label>
           </div>
@@ -3689,7 +3753,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
               <div className="min-w-0">
                 <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{m.title}</div>
                 <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
-                  {cfg.categoryLabels[m.category]} · {m.kind === "theory" ? "Teoría" : "Descarga"} · {formatDate(m.dateAdded)}
+                  {cfg.categoryLabels[m.category]} · {m.kind === "theory" ? "Teoría" : "Descarga"} · {m.level || "Todos los niveles"} · {formatDate(m.dateAdded)}
                 </div>
               </div>
               <button onClick={() => handleDelete(m.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
@@ -4098,11 +4162,11 @@ export default function App() {
   // out the exam the student is in the middle of.
   const randomCategoryExerciseId = useMemo(() => {
     if (view.name !== "listening" && view.name !== "reading") return null;
-    const pool = (exercises || []).filter((e) => e.type === view.name && e.track === track);
+    const pool = (exercises || []).filter((e) => e.type === view.name && e.track === track && matchesLevel(e.level, currentUser?.level));
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)].id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view, exercises, track]);
+  }, [view, exercises, track, currentUser]);
 
   if (exercises === null || articles === null || materials === null || !authReady) {
     return (
@@ -4126,7 +4190,7 @@ export default function App() {
   if (view.name === "home") {
     content =
       profile && profile.status === "approved" ? (
-        <Home exercises={exercises} articles={articles} setView={setView} track={track} />
+        <Home exercises={exercises} articles={articles} setView={setView} track={track} currentUser={currentUser} />
       ) : (
         <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
       );
@@ -4167,7 +4231,7 @@ export default function App() {
       <div className="max-w-3xl mx-auto px-6 py-12">Ejercicio no encontrado.</div>
     );
   } else if (view.name === "temario") {
-    content = <TemarioView materials={materials} track={track} setView={setView} />;
+    content = <TemarioView materials={materials} track={track} setView={setView} currentUser={currentUser} />;
   } else if (view.name === "articles") {
     content = <ArticlesList articles={articles} track={track} setView={setView} />;
   } else if (view.name === "article-detail") {
