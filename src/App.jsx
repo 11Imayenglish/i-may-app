@@ -888,11 +888,16 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
 /* ------------------------------------------------------------------ */
 /*  Exercise detail                                                     */
 /* ------------------------------------------------------------------ */
-function QuestionBlock({ q, index, onAnswer, selected }) {
+function QuestionBlock({ q, index, onAnswer, selected, examMode = false, revealed = true, anchorId }) {
   const { cfg, colors, sans } = useTheme();
   const answered = selected !== undefined;
+  // In exam mode the student can change their answer freely until the exam is
+  // finished; outside exam mode (grammar), picking an answer locks it in and
+  // shows the result immediately.
+  const showFeedback = examMode ? revealed : answered;
+  const locked = examMode ? revealed : answered;
   return (
-    <div className="mb-6 pb-6 border-b" style={{ borderColor: colors.line }}>
+    <div id={anchorId} className="mb-6 pb-6 border-b scroll-mt-24" style={{ borderColor: colors.line }}>
       <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3">
         {index + 1}. {q.question}
       </p>
@@ -901,18 +906,19 @@ function QuestionBlock({ q, index, onAnswer, selected }) {
           const isCorrect = i === q.correctIndex;
           const isSelected = selected === i;
           let style = { borderColor: colors.line, color: colors.ink, backgroundColor: colors.card };
-          if (answered && isSelected && isCorrect) style = { borderColor: colors.success, color: colors.success, backgroundColor: mix(colors.success, "#ffffff", 0.9) };
-          else if (answered && isSelected && !isCorrect) style = { borderColor: colors.error, color: colors.error, backgroundColor: mix(colors.error, "#ffffff", 0.9) };
-          else if (answered && isCorrect) style = { borderColor: colors.success, color: colors.success, backgroundColor: colors.card };
+          if (showFeedback && isSelected && isCorrect) style = { borderColor: colors.success, color: colors.success, backgroundColor: mix(colors.success, "#ffffff", 0.9) };
+          else if (showFeedback && isSelected && !isCorrect) style = { borderColor: colors.error, color: colors.error, backgroundColor: mix(colors.error, "#ffffff", 0.9) };
+          else if (showFeedback && isCorrect) style = { borderColor: colors.success, color: colors.success, backgroundColor: colors.card };
+          else if (!showFeedback && isSelected) style = { borderColor: colors.ink, color: colors.ink, backgroundColor: mix(colors.ink, colors.card, 0.92) };
           return (
-            <button key={i} disabled={answered} onClick={() => onAnswer(i)} className="flex items-center justify-between px-3 py-2 border text-sm text-left rounded-sm" style={{ ...sans, ...style }}>
+            <button key={i} disabled={locked} onClick={() => onAnswer(i)} className="flex items-center justify-between px-3 py-2 border text-sm text-left rounded-sm" style={{ ...sans, ...style }}>
               <span>{opt}</span>
-              {answered && isSelected && (isCorrect ? <Check size={14} /> : <X size={14} />)}
+              {showFeedback && isSelected && (isCorrect ? <Check size={14} /> : <X size={14} />)}
             </button>
           );
         })}
       </div>
-      {answered && q.explanation && (
+      {showFeedback && q.explanation && (
         <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2 italic">
           {q.explanation}
         </p>
@@ -921,14 +927,26 @@ function QuestionBlock({ q, index, onAnswer, selected }) {
   );
 }
 
+function formatCountdown(totalSeconds) {
+  const s = Math.max(0, totalSeconds);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+}
+
+const EXAM_DURATION_SECONDS = 60 * 60;
+
 function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission, onRecordSubmission }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
+  const examMode = exercise.type === "listening" || exercise.type === "reading";
   const [answers, setAnswers] = useState({});
   const [transcriptShown, setTranscriptShown] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [draft, setDraft] = useState("");
   const [draftStatus, setDraftStatus] = useState("idle");
+  const [finished, setFinished] = useState(!examMode);
+  const [secondsLeft, setSecondsLeft] = useState(EXAM_DURATION_SECONDS);
   const submittedRef = useRef(false);
 
   useEffect(() => {
@@ -937,38 +955,63 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     setDraft("");
     setDraftStatus("idle");
     submittedRef.current = false;
+    setFinished(!examMode);
+    setSecondsLeft(EXAM_DURATION_SECONDS);
     if (exercise.type === "writing" && currentUser) {
       (async () => {
         const val = await api.fetchWritingDraft(currentUser.id, exercise.id);
         if (val) setDraft(val);
       })();
     }
-  }, [exercise.id, currentUser]);
+  }, [exercise.id, currentUser, examMode]);
 
   const handleAnswer = useCallback((qId, i) => setAnswers((prev) => ({ ...prev, [qId]: i })), []);
   const total = exercise.questions?.length || 0;
   const answeredCount = Object.keys(answers).length;
   const score = exercise.questions?.reduce((acc, q) => (answers[q.id] === q.correctIndex ? acc + 1 : acc), 0) || 0;
 
+  const recordScore = useCallback(() => {
+    if (submittedRef.current || !currentUser || !onRecordSubmission || total === 0) return;
+    submittedRef.current = true;
+    onRecordSubmission({
+      id: uid(),
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userEmail: currentUser.email,
+      exerciseId: exercise.id,
+      exerciseTitle: exercise.title,
+      exerciseType: exercise.type,
+      track: exercise.track,
+      level: exercise.level,
+      score,
+      total,
+      completedAt: new Date().toISOString(),
+    });
+  }, [currentUser, onRecordSubmission, total, exercise, score]);
+
+  const finishExam = useCallback(() => {
+    setFinished(true);
+    recordScore();
+  }, [recordScore]);
+
+  // Grammar (and any non-exam type) grades and records as soon as every
+  // question has been answered, matching the immediate-feedback behavior.
   useEffect(() => {
-    if (total > 0 && answeredCount === total && !submittedRef.current && currentUser && onRecordSubmission) {
-      submittedRef.current = true;
-      onRecordSubmission({
-        id: uid(),
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userEmail: currentUser.email,
-        exerciseId: exercise.id,
-        exerciseTitle: exercise.title,
-        exerciseType: exercise.type,
-        track: exercise.track,
-        level: exercise.level,
-        score,
-        total,
-        completedAt: new Date().toISOString(),
-      });
+    if (examMode) return;
+    if (total > 0 && answeredCount === total) recordScore();
+  }, [examMode, answeredCount, total, recordScore]);
+
+  // Listening/Reading run on a 60-minute countdown; time's up finishes the
+  // exam for them, same as clicking "Finalizar examen".
+  useEffect(() => {
+    if (!examMode || finished) return;
+    if (secondsLeft <= 0) {
+      finishExam();
+      return;
     }
-  }, [answeredCount, total, score, currentUser, exercise, onRecordSubmission]);
+    const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [examMode, finished, secondsLeft, finishExam]);
 
   function playAudio() {
     if (!("speechSynthesis" in window)) return;
@@ -1022,6 +1065,55 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
             Ya completaste este examen: {priorSubmission.score}/{priorSubmission.total} el {formatDate(priorSubmission.completedAt)}.
           </span>
           <span style={{ color: t.accentDeep }} className="font-semibold">Puedes repetirlo</span>
+        </div>
+      )}
+
+      {examMode && !finished && (
+        <div
+          className="mb-6 p-4 border flex items-center justify-between gap-3 flex-wrap sticky top-2 z-10"
+          style={{ borderColor: t.accent, backgroundColor: colors.bg, ...sans }}
+        >
+          <div className="flex items-center gap-2">
+            <Clock size={16} style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} />
+            <span style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} className="text-lg font-semibold tabular-nums">
+              {formatCountdown(secondsLeft)}
+            </span>
+            <span style={{ color: "#5B6472" }} className="text-xs">tiempo restante · {answeredCount}/{total} respondidas</span>
+          </div>
+          <button onClick={finishExam} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ backgroundColor: colors.ink, color: colors.bg }}>
+            Finalizar examen
+          </button>
+        </div>
+      )}
+
+      {examMode && finished && total > 0 && (
+        <div className="mb-8 p-5 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+          <div className="flex items-center justify-between gap-4 flex-wrap mb-4">
+            <span style={{ ...sans, color: colors.ink }} className="text-sm font-semibold">Corrección del examen</span>
+            <span style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold">
+              Tu resultado: {score} / {total}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {exercise.questions.map((q, i) => {
+              const correct = answers[q.id] === q.correctIndex;
+              return (
+                <a
+                  key={q.id}
+                  href={`#q-${exercise.id}-${i}`}
+                  className="w-7 h-7 flex items-center justify-center text-xs font-semibold rounded-sm"
+                  style={{
+                    ...sans,
+                    color: correct ? colors.success : colors.error,
+                    backgroundColor: mix(correct ? colors.success : colors.error, "#ffffff", 0.85),
+                  }}
+                  title={`Pregunta ${i + 1}: ${correct ? "acertada" : "fallada"}`}
+                >
+                  {i + 1}
+                </a>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -1100,12 +1192,21 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
       ) : (
         <div>
           {exercise.questions.map((q, i) => (
-            <QuestionBlock key={q.id} q={q} index={i} selected={answers[q.id]} onAnswer={(idx) => handleAnswer(q.id, idx)} />
+            <QuestionBlock
+              key={q.id}
+              q={q}
+              index={i}
+              selected={answers[q.id]}
+              onAnswer={(idx) => handleAnswer(q.id, idx)}
+              examMode={examMode}
+              revealed={examMode ? finished : true}
+              anchorId={examMode ? `q-${exercise.id}-${i}` : undefined}
+            />
           ))}
-          {total > 0 && (
+          {total > 0 && (!examMode || finished) && (
             <div className="mt-4 p-4 border flex items-center justify-between" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
               <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium">
-                {answeredCount === total ? "Resultado final" : "Progreso"}
+                {examMode ? "Resultado final" : answeredCount === total ? "Resultado final" : "Progreso"}
               </span>
               <span style={{ ...serif, color: colors.ink }} className="text-lg font-semibold">
                 {score} / {total}
