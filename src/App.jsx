@@ -1841,6 +1841,31 @@ function ContentTab({ exercises, setExercises, track }) {
   const [bulkMessage, setBulkMessage] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
   const [theoryBusy, setTheoryBusy] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  function startEdit(ex) {
+    setEditingId(ex.id);
+    setForm({
+      type: ex.type,
+      track: ex.track,
+      title: ex.title,
+      level: ex.level,
+      instructions: ex.instructions || "",
+      passage: ex.passage || "",
+      minWords: ex.minWords || 60,
+      audioUrl: ex.audioUrl || "",
+      theoryFileUrl: ex.theoryFileUrl || "",
+      theoryFileName: ex.theoryFileName || "",
+      questions: ex.questions?.length ? ex.questions.map((q) => ({ ...q })) : [EMPTY_QUESTION()],
+    });
+    setMessage("");
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setForm(emptyForm(form.type, form.track));
+    setMessage("");
+  }
 
   async function handleUploadAudio(e) {
     const file = e.target.files?.[0];
@@ -1897,7 +1922,11 @@ function ContentTab({ exercises, setExercises, track }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim()) { setMessage("Añade un título antes de publicar."); return; }
-    const newExercise = {
+    if (form.type === "reading" && !form.passage.trim()) {
+      setMessage("Añade el texto de lectura antes de publicar — si no, el alumno no verá nada que leer.");
+      return;
+    }
+    const exerciseData = {
       type: form.type, track: form.track, title: form.title.trim(), level: form.level,
       instructions: form.instructions.trim(), passage: form.passage.trim(),
       minWords: form.type === "writing" ? Number(form.minWords) || 0 : null,
@@ -1907,18 +1936,26 @@ function ContentTab({ exercises, setExercises, track }) {
       questions: form.type === "writing" ? [] : form.questions.filter((q) => q.question.trim() && q.options.every((o) => o.trim())).map((q) => ({ ...q })),
     };
     try {
-      const created = await api.insertExercise(newExercise);
-      setExercises((prev) => [created, ...prev].sort((a, b) => a.sortOrder - b.sortOrder));
-      setMessage("Publicado correctamente.");
+      if (editingId) {
+        const updated = await api.updateExercise(editingId, exerciseData);
+        setExercises((prev) => prev.map((ex) => (ex.id === editingId ? updated : ex)));
+        setMessage("Cambios guardados.");
+      } else {
+        const created = await api.insertExercise(exerciseData);
+        setExercises((prev) => [created, ...prev].sort((a, b) => a.sortOrder - b.sortOrder));
+        setMessage("Publicado correctamente.");
+      }
     } catch {
       setMessage("No se pudo guardar. Inténtalo de nuevo.");
     }
+    setEditingId(null);
     setForm(emptyForm(form.type, form.track));
   }
   async function handleDelete(id) {
     try {
       await api.deleteExercise(id);
       setExercises((prev) => prev.filter((e) => e.id !== id));
+      if (editingId === id) cancelEdit();
     } catch {
       setMessage("No se pudo eliminar. Inténtalo de nuevo.");
     }
@@ -2163,8 +2200,13 @@ At home`}
 
           <div className="flex items-center gap-3">
             <button type="submit" className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
-              Publicar ejercicio
+              {editingId ? "Guardar cambios" : "Publicar ejercicio"}
             </button>
+            {editingId && (
+              <button type="button" onClick={cancelEdit} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                Cancelar edición
+              </button>
+            )}
             {message && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{message}</span>}
           </div>
         </form>
@@ -2194,9 +2236,20 @@ At home`}
         </p>
         <ul className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
           {filteredList.map((e, i) => (
-            <li key={e.id} className="flex items-center justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
+            <li
+              key={e.id}
+              className="flex items-center justify-between gap-2 p-3 border text-sm"
+              style={{ borderColor: cfg.colors.line, backgroundColor: editingId === e.id ? mix(cfg.colors.ink, cfg.colors.card, 0.92) : cfg.colors.card }}
+            >
               <div className="min-w-0">
-                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{e.title}</div>
+                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate flex items-center gap-1.5">
+                  {e.title}
+                  {e.type === "reading" && !e.passage?.trim() && (
+                    <span title="Sin texto de lectura — el alumno no verá nada que leer">
+                      <AlertTriangle size={13} style={{ color: cfg.colors.error }} />
+                    </span>
+                  )}
+                </div>
                 <div style={{ ...sans, color: "#5B6472" }} className="text-xs">{e.level} · {formatDate(e.dateAdded)}</div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -2206,7 +2259,8 @@ At home`}
                 <button onClick={() => moveExercise(e.id, 1)} disabled={i === filteredList.length - 1} className="p-1 border rounded-sm disabled:opacity-30" style={{ borderColor: cfg.colors.line }}>
                   <ArrowDown size={13} />
                 </button>
-                <button onClick={() => handleDelete(e.id)} style={{ color: cfg.colors.error }} title="Eliminar" className="ml-1"><Trash2 size={16} /></button>
+                <button onClick={() => startEdit(e)} style={{ color: cfg.colors.ink }} title="Editar" className="ml-1"><Pencil size={15} /></button>
+                <button onClick={() => handleDelete(e.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
               </div>
             </li>
           ))}

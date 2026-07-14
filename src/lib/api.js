@@ -147,6 +147,25 @@ export async function insertExercise(ex) {
   return rowToExercise(data);
 }
 
+export async function updateExercise(id, ex) {
+  const row = {
+    type: ex.type,
+    track: ex.track,
+    title: ex.title,
+    level: ex.level,
+    instructions: ex.instructions,
+    passage: ex.passage,
+    min_words: ex.minWords,
+    questions: ex.questions,
+    audio_url: ex.audioUrl || "",
+    theory_file_url: ex.theoryFileUrl || "",
+    theory_file_name: ex.theoryFileName || "",
+  };
+  const { data, error } = await supabase.from("exercises").update(row).eq("id", id).select().single();
+  if (error) throw error;
+  return rowToExercise(data);
+}
+
 export async function deleteExercise(id) {
   const { error } = await supabase.from("exercises").delete().eq("id", id);
   if (error) throw error;
