@@ -965,6 +965,15 @@ function formatCountdown(totalSeconds) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
 const EXAM_DURATION_SECONDS = 60 * 60;
 
 function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission, onRecordSubmission }) {
@@ -978,6 +987,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   const [draftStatus, setDraftStatus] = useState("idle");
   const [finished, setFinished] = useState(!examMode);
   const [secondsLeft, setSecondsLeft] = useState(EXAM_DURATION_SECONDS);
+  const [displayQuestions, setDisplayQuestions] = useState(exercise.questions || []);
   const submittedRef = useRef(false);
 
   useEffect(() => {
@@ -988,6 +998,10 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     submittedRef.current = false;
     setFinished(!examMode);
     setSecondsLeft(EXAM_DURATION_SECONDS);
+    // Listening/Reading exams get a fresh question order every time, so
+    // getting the same exam twice doesn't mean the same 30 questions in the
+    // same sequence.
+    setDisplayQuestions(examMode ? shuffleArray(exercise.questions || []) : (exercise.questions || []));
     if (exercise.type === "writing" && currentUser) {
       (async () => {
         const val = await api.fetchWritingDraft(currentUser.id, exercise.id);
@@ -997,9 +1011,9 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   }, [exercise.id, currentUser, examMode]);
 
   const handleAnswer = useCallback((qId, i) => setAnswers((prev) => ({ ...prev, [qId]: i })), []);
-  const total = exercise.questions?.length || 0;
+  const total = displayQuestions.length || 0;
   const answeredCount = Object.keys(answers).length;
-  const score = exercise.questions?.reduce((acc, q) => (answers[q.id] === q.correctIndex ? acc + 1 : acc), 0) || 0;
+  const score = displayQuestions.reduce((acc, q) => (answers[q.id] === q.correctIndex ? acc + 1 : acc), 0) || 0;
 
   const recordScore = useCallback(() => {
     if (submittedRef.current || !currentUser || !onRecordSubmission || total === 0) return;
@@ -1126,7 +1140,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
             </span>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {exercise.questions.map((q, i) => {
+            {displayQuestions.map((q, i) => {
               const correct = answers[q.id] === q.correctIndex;
               return (
                 <a
@@ -1222,7 +1236,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </div>
       ) : (
         <div>
-          {exercise.questions.map((q, i) => (
+          {displayQuestions.map((q, i) => (
             <QuestionBlock
               key={q.id}
               q={q}
@@ -4259,6 +4273,10 @@ export default function App() {
     return pool[Math.floor(Math.random() * pool.length)].id;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, exercises, track, currentUser]);
+  // Forces ExerciseDetail to fully remount (fresh question order, fresh timer)
+  // on every navigation to Listening/Reading, even when the same exam comes
+  // up twice in a row.
+  const examAttemptToken = useMemo(() => uid(), [view]);
 
   if (exercises === null || articles === null || materials === null || !authReady) {
     return (
@@ -4291,6 +4309,7 @@ export default function App() {
     const priorSubmission = currentUser && exercise ? submissions.find((s) => s.userId === currentUser.id && s.exerciseId === exercise.id) : null;
     content = exercise ? (
       <ExerciseDetail
+        key={examAttemptToken}
         exercise={exercise}
         setView={setView}
         track={track}
