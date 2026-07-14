@@ -924,6 +924,11 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
   const locked = examMode ? revealed : answered;
   return (
     <div id={anchorId} className="mb-6 pb-6 border-b scroll-mt-24" style={{ borderColor: colors.line }}>
+      {q.passage && (
+        <div className="p-3 mb-3 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96), color: colors.ink, ...sans }}>
+          {q.passage}
+        </div>
+      )}
       <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3">
         {index + 1}. {q.question}
       </p>
@@ -1161,7 +1166,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </a>
       )}
 
-      {exercise.type === "reading" && (
+      {exercise.type === "reading" && exercise.passage && (
         <div className="p-5 mb-8 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
           {exercise.passage}
         </div>
@@ -1799,7 +1804,7 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Contenido (exercise CRUD)                              */
 /* ------------------------------------------------------------------ */
-const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "" });
+const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "" });
 function emptyForm(type = "grammar", track = "civil") {
   return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
 }
@@ -1811,7 +1816,24 @@ function parseBulkQuestions(text) {
     .filter(Boolean);
   return blocks
     .map((block) => {
-      const lines = block
+      // An optional "---" on its own line, before the question, marks a
+      // passage/text that belongs to just this question (for Reading exams
+      // with a different short text per question).
+      let passage = "";
+      let body = block;
+      const sepMatch = block.match(/\n[ \t]*---[ \t]*\n/);
+      if (sepMatch) {
+        const idx = block.indexOf(sepMatch[0]);
+        passage = block
+          .slice(0, idx)
+          .split("\n")
+          .map((l) => l.trim())
+          .filter(Boolean)
+          .join(" ")
+          .trim();
+        body = block.slice(idx + sepMatch[0].length);
+      }
+      const lines = body
         .split("\n")
         .map((l) => l.trim())
         .filter(Boolean);
@@ -1826,7 +1848,7 @@ function parseBulkQuestions(text) {
         if (isCorrect) correctIndex = i;
         return line.replace(/\*\s*$/, "").trim();
       });
-      return { id: uid(), question, options, correctIndex, explanation: explanationLines.join(" ").trim() };
+      return { id: uid(), question, options, correctIndex, explanation: explanationLines.join(" ").trim(), passage };
     })
     .filter(Boolean);
 }
@@ -1922,8 +1944,8 @@ function ContentTab({ exercises, setExercises, track }) {
   async function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim()) { setMessage("Añade un título antes de publicar."); return; }
-    if (form.type === "reading" && !form.passage.trim()) {
-      setMessage("Añade el texto de lectura antes de publicar — si no, el alumno no verá nada que leer.");
+    if (form.type === "reading" && !form.passage.trim() && !form.questions.some((q) => (q.passage || "").trim())) {
+      setMessage("Añade el texto de lectura (general, o el de cada pregunta) antes de publicar — si no, el alumno no verá nada que leer.");
       return;
     }
     const exerciseData = {
@@ -2129,22 +2151,25 @@ function ContentTab({ exercises, setExercises, track }) {
                   <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
                     Pensado para exámenes tipo con muchas preguntas. Pega un bloque por pregunta, separado por una línea en blanco: la
                     primera línea es la pregunta, las 4 siguientes son las opciones (marca la correcta con un asterisco * al final de esa
-                    línea), y si añades una línea más debajo de las opciones, se guarda como justificación de la respuesta (por ejemplo,
-                    citando el texto o audio original). Esa línea es opcional. Ejemplo:
+                    línea), y si añades una línea más debajo de las opciones, se guarda como justificación de la respuesta. Esa línea es
+                    opcional. Si en Reading cada pregunta tiene su propio texto, ponlo al principio del bloque seguido de una línea con
+                    solo <code>---</code>. Ejemplo:
                   </p>
                   <pre style={{ ...sans, color: cfg.colors.ink, borderColor: cfg.colors.line }} className="text-xs bg-white border p-2 whitespace-pre-wrap">
-{`What is the past participle of "go"?
+{`Sarah arrived at the office at 9am, but the meeting had already started.
+---
+What happened before Sarah arrived?
+The meeting had already started *
+The meeting was cancelled
+Sarah started the meeting
+Nobody arrived
+The text says: "...the meeting had already started."
+
+What is the past participle of "go"?
 Went
 Gone *
 Going
-Goes
-The text says: "...she had already gone home by the time..."
-
-Where was the meeting held?
-In the office
-In the car
-At the airport *
-At home`}
+Goes`}
                   </pre>
                   <textarea
                     value={bulkText}
@@ -2168,6 +2193,19 @@ At home`}
 
               {form.questions.map((q, qi) => (
                 <div key={q.id} className="p-4 border space-y-2" style={{ borderColor: cfg.colors.line }}>
+                  {form.type === "reading" && (
+                    <label className="text-xs block" style={sans}>
+                      Texto de esta pregunta (opcional — si cada pregunta tiene su propio texto de lectura)
+                      <textarea
+                        value={q.passage || ""}
+                        onChange={(e) => updateQuestion(qi, "passage", e.target.value)}
+                        placeholder="Pega aquí el texto que corresponde solo a esta pregunta…"
+                        rows={3}
+                        className="mt-1 w-full border px-3 py-1.5 text-xs"
+                        style={{ borderColor: cfg.colors.line }}
+                      />
+                    </label>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1}`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
                     {form.questions.length > 1 && (
@@ -2244,7 +2282,7 @@ At home`}
               <div className="min-w-0">
                 <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate flex items-center gap-1.5">
                   {e.title}
-                  {e.type === "reading" && !e.passage?.trim() && (
+                  {e.type === "reading" && !e.passage?.trim() && !(e.questions || []).some((q) => q.passage?.trim()) && (
                     <span title="Sin texto de lectura — el alumno no verá nada que leer">
                       <AlertTriangle size={13} style={{ color: cfg.colors.error }} />
                     </span>
