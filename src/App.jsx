@@ -119,8 +119,8 @@ const DEFAULT_CONFIG = {
   icons: { grammar: "", listening: "", reading: "", writing: "" },
   trackIcons: { civil: "", military: "" },
   articlesLabel: "Artículos",
-  homeLayout: ["intro", "categories", "articles"],
-  homeVisibility: { intro: true, categories: true, articles: true },
+  homeLayout: ["intro", "categories", "articles", "reviews"],
+  homeVisibility: { intro: true, categories: true, articles: true, reviews: true },
   emojiLibrary: [],
   trackOverrides: { civil: null, military: null },
   trackBanners: { civil: "", military: "" },
@@ -694,13 +694,14 @@ function PublicHome({ articles, reviews, setView, track }) {
   );
 }
 
-function Home({ exercises, articles, setView, track, currentUser }) {
+function Home({ exercises, articles, reviews, setView, track, currentUser }) {
   const { cfg } = useTheme();
   const userLevel = currentUser?.level;
   const blocks = {
     intro: <IntroBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
     categories: <CategoriesBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
     articles: <ArticlesBlock articles={articles} setView={setView} track={track} />,
+    reviews: <ReviewsBlock reviews={reviews} />,
   };
   return <div>{cfg.homeLayout.filter((key) => cfg.homeVisibility[key]).map((key) => <div key={key}>{blocks[key]}</div>)}</div>;
 }
@@ -3877,7 +3878,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Diseño de portada (orden y visibilidad de bloques)     */
 /* ------------------------------------------------------------------ */
-const BLOCK_LABELS = { intro: "Portada y boletín del día", categories: "Tarjetas de categorías", articles: "Artículos destacados" };
+const BLOCK_LABELS = { intro: "Portada y boletín del día", categories: "Tarjetas de categorías", articles: "Artículos destacados", reviews: "Reseñas" };
 
 function LayoutTab({ cfg, updateConfig }) {
   const { sans, serif } = useTheme();
@@ -4300,7 +4301,7 @@ export default function App() {
   if (view.name === "home") {
     content =
       profile && profile.status === "approved" ? (
-        <Home exercises={exercises} articles={articles} setView={setView} track={track} currentUser={currentUser} />
+        <Home exercises={exercises} articles={articles} reviews={reviews} setView={setView} track={track} currentUser={currentUser} />
       ) : (
         <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
       );
