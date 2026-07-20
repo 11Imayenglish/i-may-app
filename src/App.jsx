@@ -148,6 +148,7 @@ const DEFAULT_CONFIG = {
       headline: "El inglés de negocios se domina con la misma disciplina que un balance de cuentas.",
       paragraph:
         "Gramática, listening, reading y writing en un único plan de estudios que se actualiza cada día. Sin rellenos: material nuevo, revisado y con corrección inmediata.",
+      writingSubmission: "",
     },
     military: {
       label: "Militar",
@@ -155,6 +156,7 @@ const DEFAULT_CONFIG = {
       headline: "El inglés operativo se entrena con la misma disciplina que una orden de servicio.",
       paragraph:
         "Gramática, listening, reading y writing centrados en comunicaciones, procedimientos e informes militares. Material nuevo cada día, con corrección inmediata.",
+      writingSubmission: "",
     },
   },
 };
@@ -867,6 +869,18 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
       </div>
       <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
 
+      {type === "writing" && cfg.copy[track].writingSubmission?.trim() && (
+        <div className="p-5 mb-8 border" style={{ borderColor: t.accent, backgroundColor: t.accentSoft }}>
+          <div className="flex items-center gap-2 mb-2">
+            <FileText size={16} style={{ color: t.accentDeep }} />
+            <span style={{ ...sans, color: t.accentDeep }} className="text-sm font-semibold">Cómo entregar tu redacción</span>
+          </div>
+          <p style={{ ...sans, color: t.accentDeep }} className="text-sm leading-relaxed whitespace-pre-line">
+            {cfg.copy[track].writingSubmission}
+          </p>
+        </div>
+      )}
+
       <MaterialsSection materials={materials} type={type} track={track} userLevel={userLevel} />
 
       {list.length === 0 ? (
@@ -984,8 +998,6 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   const [answers, setAnswers] = useState({});
   const [transcriptShown, setTranscriptShown] = useState(false);
   const [playing, setPlaying] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [draftStatus, setDraftStatus] = useState("idle");
   const [finished, setFinished] = useState(!examMode);
   const [secondsLeft, setSecondsLeft] = useState(EXAM_DURATION_SECONDS);
   const [displayQuestions, setDisplayQuestions] = useState(exercise.questions || []);
@@ -994,8 +1006,6 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   useEffect(() => {
     setAnswers({});
     setTranscriptShown(false);
-    setDraft("");
-    setDraftStatus("idle");
     submittedRef.current = false;
     setFinished(!examMode);
     setSecondsLeft(EXAM_DURATION_SECONDS);
@@ -1003,12 +1013,6 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     // getting the same exam twice doesn't mean the same 30 questions in the
     // same sequence.
     setDisplayQuestions(examMode ? shuffleArray(exercise.questions || []) : (exercise.questions || []));
-    if (exercise.type === "writing" && currentUser) {
-      (async () => {
-        const val = await api.fetchWritingDraft(currentUser.id, exercise.id);
-        if (val) setDraft(val);
-      })();
-    }
   }, [exercise.id, currentUser, examMode]);
 
   const handleAnswer = useCallback((qId, i) => setAnswers((prev) => ({ ...prev, [qId]: i })), []);
@@ -1070,19 +1074,6 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     utter.onerror = () => setPlaying(false);
     window.speechSynthesis.speak(utter);
   }
-
-  async function saveDraft() {
-    if (!currentUser) return;
-    setDraftStatus("saving");
-    try {
-      await api.saveWritingDraft(currentUser.id, exercise.id, draft);
-      setDraftStatus("saved");
-    } catch {
-      setDraftStatus("idle");
-    }
-  }
-
-  const wordCount = draft.trim().length ? draft.trim().split(/\s+/).length : 0;
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12">
@@ -1215,25 +1206,14 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
 
       {exercise.type === "writing" ? (
         <div>
-          <div className="p-5 mb-5 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
+          <div className="p-5 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
             {exercise.passage}
           </div>
-          <textarea
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); setDraftStatus("idle"); }}
-            rows={10}
-            placeholder="Escribe tu redacción aquí…"
-            className="w-full p-4 border text-sm leading-relaxed resize-y"
-            style={{ ...sans, borderColor: colors.line, color: colors.ink }}
-          />
-          <div className="flex items-center justify-between mt-3">
-            <span style={{ ...sans, color: wordCount >= (exercise.minWords || 0) ? colors.success : "#5B6472" }} className="text-xs">
-              {wordCount} palabras {exercise.minWords ? `(mínimo ${exercise.minWords})` : ""}
-            </span>
-            <button onClick={saveDraft} disabled={!draft.trim()} className="px-4 py-2 text-sm font-semibold rounded-sm disabled:opacity-40" style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}>
-              {draftStatus === "saving" ? "Guardando…" : draftStatus === "saved" ? "Guardado ✓" : "Guardar borrador"}
-            </button>
-          </div>
+          {exercise.minWords > 0 && (
+            <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-3">
+              Mínimo recomendado: {exercise.minWords} palabras.
+            </p>
+          )}
         </div>
       ) : (
         <div>
@@ -2968,6 +2948,17 @@ function TextsTab({ cfg, updateConfig }) {
             <label className="text-sm block" style={sans}>
               Párrafo de introducción
               <textarea value={cfg.copy[trackKey].paragraph} onChange={(e) => updateTrackCopy(trackKey, "paragraph", e.target.value)} rows={3} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+            </label>
+            <label className="text-sm block" style={sans}>
+              Cómo y a dónde entregar el Writing (se muestra fijo arriba de todo, siempre, al entrar en Writing)
+              <textarea
+                value={cfg.copy[trackKey].writingSubmission}
+                onChange={(e) => updateTrackCopy(trackKey, "writingSubmission", e.target.value)}
+                rows={3}
+                placeholder="Ej. Envía tu redacción en Word a nombre@imayenglish.com con el asunto 'Writing + tu nombre'."
+                className="mt-1 w-full border px-3 py-2"
+                style={{ borderColor: cfg.colors.line }}
+              />
             </label>
           </div>
         </div>

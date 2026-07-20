@@ -351,24 +351,6 @@ export async function upsertSubmission({ userId, exerciseId, score, total }) {
 /* ------------------------------------------------------------------ */
 /*  Writing drafts                                                      */
 /* ------------------------------------------------------------------ */
-export async function fetchWritingDraft(userId, exerciseId) {
-  const { data, error } = await supabase
-    .from("writing_drafts")
-    .select("content")
-    .eq("user_id", userId)
-    .eq("exercise_id", exerciseId)
-    .maybeSingle();
-  if (error) throw error;
-  return data?.content || "";
-}
-
-export async function saveWritingDraft(userId, exerciseId, content) {
-  const { error } = await supabase
-    .from("writing_drafts")
-    .upsert({ user_id: userId, exercise_id: exerciseId, content, updated_at: new Date().toISOString() }, { onConflict: "user_id,exercise_id" });
-  if (error) throw error;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Image uploads (logo, banners — stored in the public "media" bucket) */
 /* ------------------------------------------------------------------ */
