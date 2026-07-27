@@ -939,6 +939,11 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
   const locked = examMode ? revealed : answered;
   return (
     <div id={anchorId} className="mb-6 pb-6 border-b scroll-mt-24" style={{ borderColor: colors.line }}>
+      {q.audioUrl && (
+        <div className="p-3 mb-3 border" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96) }}>
+          <audio controls src={q.audioUrl} className="w-full" />
+        </div>
+      )}
       {q.passage && (
         <div className="p-3 mb-3 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96), color: colors.ink, ...sans }}>
           {q.passage}
@@ -1799,7 +1804,7 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Contenido (exercise CRUD)                              */
 /* ------------------------------------------------------------------ */
-const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "" });
+const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "", audioUrl: "" });
 function emptyForm(type = "grammar", track = "civil") {
   return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
 }
@@ -1857,6 +1862,7 @@ function ContentTab({ exercises, setExercises, track }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkMessage, setBulkMessage] = useState("");
   const [audioBusy, setAudioBusy] = useState(false);
+  const [questionAudioBusyIndex, setQuestionAudioBusyIndex] = useState(null);
   const [theoryBusy, setTheoryBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
 
@@ -1895,6 +1901,20 @@ function ContentTab({ exercises, setExercises, track }) {
       setMessage("No se pudo subir el audio. Inténtalo de nuevo.");
     }
     setAudioBusy(false);
+    e.target.value = "";
+  }
+
+  async function handleUploadQuestionAudio(qIndex, e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setQuestionAudioBusyIndex(qIndex);
+    try {
+      const url = await api.uploadFile(file, "audio");
+      updateQuestion(qIndex, "audioUrl", url);
+    } catch {
+      setMessage("No se pudo subir el audio de esa pregunta. Inténtalo de nuevo.");
+    }
+    setQuestionAudioBusyIndex(null);
     e.target.value = "";
   }
 
@@ -2082,7 +2102,7 @@ function ContentTab({ exercises, setExercises, track }) {
 
           {form.type === "listening" && (
             <div className="text-sm" style={sans}>
-              Audio del examen
+              Audio general del examen (opcional si cada pregunta lleva su propio audio, más abajo)
               <div className="mt-1 flex items-center gap-3 flex-wrap">
                 <label
                   className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
@@ -2148,7 +2168,8 @@ function ContentTab({ exercises, setExercises, track }) {
                     primera línea es la pregunta, las 4 siguientes son las opciones (marca la correcta con un asterisco * al final de esa
                     línea), y si añades una línea más debajo de las opciones, se guarda como justificación de la respuesta. Esa línea es
                     opcional. Si en Reading cada pregunta tiene su propio texto, ponlo al principio del bloque seguido de una línea con
-                    solo <code>---</code>. Ejemplo:
+                    solo <code>---</code>. En Listening, el audio no se puede pegar como texto: pega aquí las preguntas y luego sube el
+                    audio de cada una individualmente, en el cuadro que aparece debajo de cada pregunta ya añadida. Ejemplo:
                   </p>
                   <pre style={{ ...sans, color: cfg.colors.ink, borderColor: cfg.colors.line }} className="text-xs bg-white border p-2 whitespace-pre-wrap">
 {`Sarah arrived at the office at 9am, but the meeting had already started.
@@ -2200,6 +2221,35 @@ Goes`}
                         style={{ borderColor: cfg.colors.line }}
                       />
                     </label>
+                  )}
+                  {form.type === "listening" && (
+                    <div className="text-xs" style={sans}>
+                      Audio de esta pregunta (opcional — si cada pregunta tiene su propia grabación)
+                      <div className="mt-1 flex items-center gap-3 flex-wrap">
+                        <label
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                          style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: questionAudioBusyIndex === qi ? 0.5 : 1 }}
+                        >
+                          <Volume2 size={12} />
+                          {questionAudioBusyIndex === qi ? "Subiendo…" : "Subir audio"}
+                          <input
+                            type="file"
+                            accept="audio/*,video/mp4,.mp4"
+                            onChange={(e) => handleUploadQuestionAudio(qi, e)}
+                            disabled={questionAudioBusyIndex === qi}
+                            className="hidden"
+                          />
+                        </label>
+                        {q.audioUrl && (
+                          <>
+                            <audio controls src={q.audioUrl} className="h-8" />
+                            <button type="button" onClick={() => updateQuestion(qi, "audioUrl", "")} className="underline" style={{ ...sans, color: "#5B6472" }}>
+                              Quitar
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   )}
                   <div className="flex items-center justify-between gap-2">
                     <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1}`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
