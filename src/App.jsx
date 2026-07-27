@@ -2090,7 +2090,7 @@ function ContentTab({ exercises, setExercises, track }) {
                 >
                   <Volume2 size={13} />
                   {audioBusy ? "Subiendo…" : "Subir audio"}
-                  <input type="file" accept="audio/*" onChange={handleUploadAudio} disabled={audioBusy} className="hidden" />
+                  <input type="file" accept="audio/*,video/mp4,.mp4" onChange={handleUploadAudio} disabled={audioBusy} className="hidden" />
                 </label>
                 {form.audioUrl && (
                   <>
