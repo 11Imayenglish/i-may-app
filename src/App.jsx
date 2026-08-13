@@ -631,28 +631,71 @@ function StarRating({ rating, size = 14, color }) {
   );
 }
 
-function ReviewsBlock({ reviews }) {
+function ReviewsBlock({ reviews, setView }) {
   const { cfg, colors, serif, sans } = useTheme();
   if (!reviews.length) return null;
+  const featured = reviews.filter((r) => r.featured);
+  const shown = (featured.length ? featured : reviews).slice(0, 3);
   return (
-    <section className="max-w-6xl mx-auto px-6 pb-16">
-      <h2 style={{ ...serif, color: colors.ink }} className="text-xl font-semibold mb-4">
-        Lo que dicen nuestros alumnos
-      </h2>
-      <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {reviews.map((r) => (
-          <div key={r.id} className="p-4 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
-            <StarRating rating={r.rating} color="#D4A017" />
-            <p style={{ ...sans, color: colors.ink }} className="text-sm mt-2 leading-relaxed">
+    <section className="max-w-5xl mx-auto px-6 pb-14">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <h2 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold">
+          Lo que dicen nuestros alumnos
+        </h2>
+        {reviews.length > shown.length && setView && (
+          <button onClick={() => setView({ name: "reviews" })} className="text-xs underline shrink-0" style={{ ...sans, color: "#5B6472" }}>
+            Ver todas las reseñas ({reviews.length})
+          </button>
+        )}
+      </div>
+      <div className="grid sm:grid-cols-3 gap-3">
+        {shown.map((r) => (
+          <div key={r.id} className="p-3 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+            <StarRating rating={r.rating} size={12} color="#D4A017" />
+            <p style={{ ...sans, color: colors.ink }} className="text-xs mt-1.5 leading-relaxed line-clamp-4">
               "{r.body}"
             </p>
-            <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-3 font-semibold">
+            <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2 font-semibold">
               — {r.authorName}
             </p>
           </div>
         ))}
       </div>
     </section>
+  );
+}
+
+function AllReviewsView({ reviews, setView }) {
+  const { cfg, colors, serif, sans } = useTheme();
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-12">
+      <button onClick={() => setView({ name: "home" })} className="flex items-center gap-1 text-sm mb-6" style={{ ...sans, color: "#5B6472" }}>
+        <ChevronLeft size={16} /> Volver al inicio
+      </button>
+      <h2 style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold mb-2">
+        Todas las reseñas
+      </h2>
+      <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-8">
+        {reviews.length} reseña{reviews.length === 1 ? "" : "s"} de nuestros alumnos.
+      </p>
+      {reviews.length === 0 ? (
+        <p style={{ ...sans, color: "#5B6472" }}>Todavía no hay reseñas publicadas.</p>
+      ) : (
+        <div className="grid sm:grid-cols-2 gap-4">
+          {reviews.map((r) => (
+            <div key={r.id} className="p-4 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+              <StarRating rating={r.rating} color="#D4A017" />
+              <p style={{ ...sans, color: colors.ink }} className="text-sm mt-2 leading-relaxed">
+                "{r.body}"
+              </p>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-3 font-semibold">
+                — {r.authorName}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -691,7 +734,7 @@ function PublicHome({ articles, reviews, setView, track }) {
       </section>
 
       <ArticlesBlock articles={articles} track={track} setView={setView} />
-      <ReviewsBlock reviews={reviews} />
+      <ReviewsBlock reviews={reviews} setView={setView} />
     </>
   );
 }
@@ -703,7 +746,7 @@ function Home({ exercises, articles, reviews, setView, track, currentUser }) {
     intro: <IntroBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
     categories: <CategoriesBlock exercises={exercises} setView={setView} track={track} userLevel={userLevel} />,
     articles: <ArticlesBlock articles={articles} setView={setView} track={track} />,
-    reviews: <ReviewsBlock reviews={reviews} />,
+    reviews: <ReviewsBlock reviews={reviews} setView={setView} />,
   };
   return <div>{cfg.homeLayout.filter((key) => cfg.homeVisibility[key]).map((key) => <div key={key}>{blocks[key]}</div>)}</div>;
 }
@@ -3686,12 +3729,27 @@ function ReviewsTab({ reviews, setReviews }) {
     }
   }
 
+  async function toggleFeatured(id, featured) {
+    try {
+      await api.updateReviewFeatured(id, featured);
+      setReviews((prev) => prev.map((r) => (r.id === id ? { ...r, featured } : r)));
+    } catch {
+      setMessage("No se pudo actualizar. Inténtalo de nuevo.");
+    }
+  }
+
+  const featuredCount = reviews.filter((r) => r.featured).length;
+
   return (
     <div className="grid lg:grid-cols-[1fr_1fr] gap-10">
       <div>
-        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-6">
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-2">
           Copia aquí las reseñas que te dejen tus alumnos (en Google o donde sea). Se muestran a cualquier visitante, incluso antes de
           registrarse.
+        </p>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-xs mb-6">
+          En la portada solo se ven <strong>3</strong> reseñas — marca con la estrella cuáles quieres destacar ahí (llevas {featuredCount}
+          {" "}marcadas). El resto se ven igualmente si alguien pincha en "Ver todas las reseñas".
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <label className="text-sm block" style={sans}>
@@ -3721,13 +3779,22 @@ function ReviewsTab({ reviews, setReviews }) {
         <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Reseñas publicadas</span>
         <ul className="space-y-2 mt-3 max-h-[70vh] overflow-y-auto pr-1">
           {reviews.map((r) => (
-            <li key={r.id} className="flex items-start justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
+            <li key={r.id} className="flex items-start justify-between gap-2 p-3 border text-sm" style={{ borderColor: r.featured ? cfg.colors.civilAccent : cfg.colors.line, backgroundColor: cfg.colors.card }}>
               <div className="min-w-0">
                 <div style={{ ...sans, color: "#D4A017" }} className="text-xs">{"★".repeat(r.rating)}</div>
                 <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium">{r.authorName}</div>
                 <div style={{ ...sans, color: "#5B6472" }} className="text-xs line-clamp-2">{r.body}</div>
               </div>
-              <button onClick={() => handleDelete(r.id)} style={{ color: cfg.colors.error }} title="Eliminar" className="shrink-0"><Trash2 size={16} /></button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  onClick={() => toggleFeatured(r.id, !r.featured)}
+                  title={r.featured ? "Quitar de destacadas" : "Destacar en la portada"}
+                  style={{ color: r.featured ? cfg.colors.civilAccent : "#B9B2A0" }}
+                >
+                  <Star size={16} fill={r.featured ? "currentColor" : "none"} />
+                </button>
+                <button onClick={() => handleDelete(r.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
+              </div>
             </li>
           ))}
           {reviews.length === 0 && (
@@ -4385,6 +4452,8 @@ export default function App() {
     );
   } else if (view.name === "temario") {
     content = <TemarioView materials={materials} track={track} setView={setView} currentUser={currentUser} />;
+  } else if (view.name === "reviews") {
+    content = <AllReviewsView reviews={reviews} setView={setView} />;
   } else if (view.name === "articles") {
     content = <ArticlesList articles={articles} track={track} setView={setView} />;
   } else if (view.name === "article-detail") {
@@ -4419,7 +4488,7 @@ export default function App() {
     );
   }
 
-  const PUBLIC_VIEWS = ["home", "articles", "article-detail"];
+  const PUBLIC_VIEWS = ["home", "articles", "article-detail", "reviews"];
   const gatedContent =
     view.name === "admin" || PUBLIC_VIEWS.includes(view.name) ? (
       content

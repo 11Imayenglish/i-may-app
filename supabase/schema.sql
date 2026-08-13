@@ -51,7 +51,8 @@ create table if not exists reviews (
   author_name text not null,
   rating int not null check (rating between 1 and 5),
   body text not null,
-  date_added timestamptz not null default now()
+  date_added timestamptz not null default now(),
+  featured boolean not null default false
 );
 
 create table if not exists materials (

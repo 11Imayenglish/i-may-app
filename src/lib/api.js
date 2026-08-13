@@ -245,7 +245,7 @@ export async function deleteArticle(id) {
 /*  Reviews (testimonials)                                              */
 /* ------------------------------------------------------------------ */
 function rowToReview(r) {
-  return { id: r.id, authorName: r.author_name, rating: r.rating, body: r.body, dateAdded: r.date_added };
+  return { id: r.id, authorName: r.author_name, rating: r.rating, body: r.body, dateAdded: r.date_added, featured: r.featured || false };
 }
 
 export async function fetchReviews() {
@@ -255,10 +255,15 @@ export async function fetchReviews() {
 }
 
 export async function insertReview(rev) {
-  const row = { author_name: rev.authorName, rating: rev.rating, body: rev.body };
+  const row = { author_name: rev.authorName, rating: rev.rating, body: rev.body, featured: rev.featured || false };
   const { data, error } = await supabase.from("reviews").insert(row).select().single();
   if (error) throw error;
   return rowToReview(data);
+}
+
+export async function updateReviewFeatured(id, featured) {
+  const { error } = await supabase.from("reviews").update({ featured }).eq("id", id);
+  if (error) throw error;
 }
 
 export async function deleteReview(id) {
