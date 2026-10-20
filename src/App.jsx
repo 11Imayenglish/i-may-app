@@ -972,7 +972,14 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
 /* ------------------------------------------------------------------ */
 /*  Exercise detail                                                     */
 /* ------------------------------------------------------------------ */
-function QuestionBlock({ q, index, onAnswer, selected, examMode = false, revealed = true, anchorId }) {
+// Questions that share the same text/audio are shown (and shuffled) together,
+// and the shared text/audio is displayed once above the first of them.
+function questionContextKey(q) {
+  const p = (q.passage || "").trim();
+  return p || q.audioUrl ? `${p}|${q.audioUrl || ""}` : "";
+}
+
+function QuestionBlock({ q, index, onAnswer, selected, examMode = false, revealed = true, anchorId, showContext = true }) {
   const { cfg, colors, sans } = useTheme();
   const answered = selected !== undefined;
   // In exam mode the student can change their answer freely until the exam is
@@ -982,13 +989,13 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
   const locked = examMode ? revealed : answered;
   return (
     <div id={anchorId} className="mb-6 pb-6 border-b scroll-mt-24" style={{ borderColor: colors.line }}>
-      {q.audioUrl && (
+      {showContext && q.audioUrl && (
         <div className="p-3 mb-3 border" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96) }}>
           <audio controls src={q.audioUrl} className="w-full" />
         </div>
       )}
-      {q.passage && (
-        <div className="p-3 mb-3 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96), color: colors.ink, ...sans }}>
+      {showContext && q.passage && (
+        <div className="p-3 mb-3 border text-sm leading-relaxed whitespace-pre-line" style={{ borderColor: colors.line, backgroundColor: mix(colors.ink, "#ffffff", 0.96), color: colors.ink, ...sans }}>
           {q.passage}
         </div>
       )}
@@ -1037,6 +1044,20 @@ function shuffleArray(arr) {
   return a;
 }
 
+function shuffleGrouped(questions) {
+  const groups = [];
+  const byKey = new Map();
+  questions.forEach((q) => {
+    const key = questionContextKey(q);
+    if (key && byKey.has(key)) groups[byKey.get(key)].push(q);
+    else {
+      if (key) byKey.set(key, groups.length);
+      groups.push([q]);
+    }
+  });
+  return shuffleArray(groups.map((g) => shuffleArray(g))).flat();
+}
+
 const EXAM_DURATION_SECONDS = 60 * 60;
 
 function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission, onRecordSubmission }) {
@@ -1060,7 +1081,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     // Listening/Reading exams get a fresh question order every time, so
     // getting the same exam twice doesn't mean the same 30 questions in the
     // same sequence.
-    setDisplayQuestions(examMode ? shuffleArray(exercise.questions || []) : (exercise.questions || []));
+    setDisplayQuestions(examMode ? shuffleGrouped(exercise.questions || []) : (exercise.questions || []));
   }, [exercise.id, currentUser, examMode]);
 
   const handleAnswer = useCallback((qId, i) => setAnswers((prev) => ({ ...prev, [qId]: i })), []);
@@ -1275,6 +1296,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
               examMode={examMode}
               revealed={examMode ? finished : true}
               anchorId={examMode ? `q-${exercise.id}-${i}` : undefined}
+              showContext={i === 0 || questionContextKey(q) !== questionContextKey(displayQuestions[i - 1])}
             />
           ))}
           {total > 0 && (!examMode || finished) && (
@@ -1852,7 +1874,9 @@ function emptyForm(type = "grammar", track = "civil") {
   return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
 }
 
-function parseBulkQuestions(text) {
+// Old format: one block per question separated by blank lines, first line is
+// the question, next lines are the options (correct one ends with *).
+function parseLegacyBulk(text) {
   const blocks = text
     .split(/\n\s*\n/)
     .map((b) => b.trim())
@@ -1886,14 +1910,340 @@ function parseBulkQuestions(text) {
       const optionLines = rest.slice(0, 4);
       const explanationLines = rest.slice(4);
       let correctIndex = 0;
+      let marked = false;
       const options = optionLines.map((line, i) => {
         const isCorrect = /\*\s*$/.test(line);
-        if (isCorrect) correctIndex = i;
+        if (isCorrect) {
+          correctIndex = i;
+          marked = true;
+        }
         return line.replace(/\*\s*$/, "").trim();
       });
-      return { id: uid(), question, options, correctIndex, explanation: explanationLines.join(" ").trim(), passage };
+      return { id: uid(), question, options, correctIndex, explanation: explanationLines.join(" ").trim(), passage, audioUrl: "", unmarked: !marked };
     })
     .filter(Boolean);
+}
+
+/* ---- Smart paste: numbered questions, lettered options, answer lines, shared texts ---- */
+const OPTION_LETTERS = "ABCDEF";
+const MARKER_KW = "(?:texto|text|passage|lectura|reading|audio|listening|escucha|grabaci[oó]n)";
+const RE_OPTION = /^\(?([A-Fa-f])(?:\)\s*|[.:\-–]\s+)(\S.*)$/;
+const RE_QUESTION = /^(?:(?:q|question|pregunta|preg)\s*\.?\s*)?(\d{1,3})\s*[.)\-:–]\s*(\S.*)$/i;
+const RE_ANSWER = /^\W*(?:correct\s+answer|right\s+answer|correct|answer|ans|respuesta\s+correcta|respuesta|correcta|soluci[oó]n|solution|clave|key)\s*[:=\-–]\s*\(?([A-Fa-f]|[1-6])\b/i;
+const RE_EXPLANATION = /^\W*(?:explicaci[oó]n|justificaci[oó]n|explanation|justification|rationale)\s*[:\-–]\s*(.*)$/i;
+const RE_MARKER = new RegExp(`^${MARKER_KW}\\s*\\d+\\s*[:.\\-–)]\\s*(.*)$|^${MARKER_KW}\\s*:\\s*(.*)$|^${MARKER_KW}\\s*\\d*\\s*$`, "i");
+const RE_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/;
+
+function normalizeBulkLine(raw) {
+  let s = raw.trim();
+  let flagged = /^\*\*[^*].*\*\*$/.test(s) || /^__[^_].*__$/.test(s);
+  s = s.replace(/^#{1,6}\s*/, "");
+  s = s.replace(/^[-•·▪]\s+(?=\(?[A-Fa-f](?:\)|[.:\-–]\s))/, "");
+  s = s.replace(/\*\*|__/g, "").trim();
+  if (/^(?:✓|✔|✅)\s*/.test(s)) {
+    flagged = true;
+    s = s.replace(/^(?:✓|✔|✅)\s*/, "");
+  }
+  return { s, flagged };
+}
+
+function stripCorrectMarker(t) {
+  let correct = false;
+  let out = t.trim();
+  const trail = /(?:\s*(?:\*|✓|✔|✅))+\s*$/;
+  if (trail.test(out)) { correct = true; out = out.replace(trail, "").trim(); }
+  const word = /\s*\((?:correct|correcta|right|true)\)\s*$/i;
+  if (word.test(out)) { correct = true; out = out.replace(word, "").trim(); }
+  return { text: out, correct };
+}
+
+function parseStructuredBulk(text, type) {
+  const allowPassage = type === "reading";
+  const rawLines = text.replace(/\r/g, "").split("\n");
+  const norm = rawLines.map(normalizeBulkLine);
+  const questions = [];
+  const issues = [];
+  let cur = null;
+  let passage = "";
+  let pending = [];
+  let group = 0;
+  let ignored = 0;
+
+  const joinPending = () => pending.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const nextIsFirstOption = (i) => {
+    for (let j = i + 1; j < norm.length; j++) {
+      if (!norm[j].s) continue;
+      const m = norm[j].s.match(RE_OPTION);
+      return !!m && m[1].toUpperCase() === "A";
+    }
+    return false;
+  };
+  const pushLoose = (s) => {
+    if (allowPassage) pending.push(s);
+    else ignored += 1;
+  };
+  const finish = () => {
+    if (!cur) return;
+    const problems = [];
+    if (cur.options.length < 2) problems.push("Tiene menos de 2 opciones");
+    let correct = cur.marked >= 0 ? cur.marked : cur.answer;
+    if (correct < 0 || correct >= cur.options.length) {
+      problems.push("No se ha detectado la respuesta correcta");
+      correct = 0;
+    }
+    const q = {
+      id: uid(),
+      question: cur.question.trim(),
+      options: cur.options,
+      correctIndex: correct,
+      explanation: cur.explanation.trim(),
+      passage: cur.passage,
+      audioUrl: "",
+    };
+    if (cur.group) q.group = cur.group;
+    questions.push(q);
+    issues.push(problems);
+    cur = null;
+  };
+  const startQuestion = (qText) => {
+    finish();
+    if (pending.some(Boolean)) {
+      if (allowPassage) passage = joinPending();
+      else ignored += pending.filter(Boolean).length;
+      pending = [];
+    }
+    cur = { question: qText, options: [], marked: -1, answer: -1, explanation: "", passage: allowPassage ? passage : "", group, closed: false, inExplanation: false };
+  };
+
+  for (let i = 0; i < norm.length; i++) {
+    const { s, flagged } = norm[i];
+    const rawTrim = rawLines[i].trim();
+
+    if (!s) {
+      if (cur) {
+        cur.inExplanation = false;
+        if (cur.options.length) cur.closed = true;
+      } else if (pending.length && pending[pending.length - 1] !== "") {
+        pending.push("");
+      }
+      continue;
+    }
+
+    if (RE_SEPARATOR.test(rawTrim)) {
+      finish();
+      if (allowPassage && pending.some(Boolean)) {
+        passage = joinPending();
+        pending = [];
+      }
+      continue;
+    }
+
+    const mk = s.match(RE_MARKER);
+    if (mk) {
+      finish();
+      group += 1;
+      passage = "";
+      pending = [];
+      const rest = (mk[1] || mk[2] || "").trim();
+      if (rest) pushLoose(rest);
+      continue;
+    }
+
+    const qm = s.match(RE_QUESTION);
+    if (qm) {
+      startQuestion(qm[2]);
+      continue;
+    }
+
+    if (cur) {
+      const expected = OPTION_LETTERS[cur.options.length];
+      const om = s.match(RE_OPTION);
+      if (om && expected && om[1].toUpperCase() === expected) {
+        const { text: optText, correct } = stripCorrectMarker(om[2]);
+        cur.options.push(optText);
+        if (correct || flagged) cur.marked = cur.options.length - 1;
+        continue;
+      }
+      const am = s.match(RE_ANSWER);
+      if (am) {
+        const ch = am[1];
+        cur.answer = /\d/.test(ch) ? Number(ch) - 1 : ch.toUpperCase().charCodeAt(0) - 65;
+        cur.closed = true;
+        continue;
+      }
+      const em = s.match(RE_EXPLANATION);
+      if (em) {
+        cur.explanation = em[1].trim();
+        cur.inExplanation = true;
+        cur.closed = true;
+        continue;
+      }
+      if ((cur.options.length > 0 || cur.closed) && nextIsFirstOption(i)) {
+        startQuestion(s);
+        continue;
+      }
+      if (cur.inExplanation) {
+        cur.explanation += ` ${s}`;
+        continue;
+      }
+      if (cur.closed) {
+        finish();
+        pushLoose(s);
+        continue;
+      }
+      if (cur.options.length === 0) {
+        cur.question += ` ${s}`;
+        continue;
+      }
+      const { text: more, correct } = stripCorrectMarker(s);
+      const last = cur.options.length - 1;
+      cur.options[last] = `${cur.options[last]} ${more}`.trim();
+      if (correct) cur.marked = last;
+      continue;
+    }
+
+    if (nextIsFirstOption(i)) {
+      startQuestion(s);
+      continue;
+    }
+    pushLoose(s);
+  }
+  finish();
+  return { questions, issues, ignored };
+}
+
+function looksStructured(text) {
+  let labeled = 0;
+  let numbered = 0;
+  let answers = 0;
+  for (const raw of text.replace(/\r/g, "").split("\n")) {
+    const { s } = normalizeBulkLine(raw);
+    if (!s) continue;
+    if (RE_OPTION.test(s)) labeled += 1;
+    else if (RE_QUESTION.test(s)) numbered += 1;
+    else if (RE_ANSWER.test(s)) answers += 1;
+  }
+  return labeled >= 2 || answers >= 1 || (numbered >= 1 && labeled >= 1);
+}
+
+function parseBulk(text, type) {
+  if (looksStructured(text)) return parseStructuredBulk(text, type);
+  const raw = parseLegacyBulk(text);
+  return {
+    questions: raw.map(({ unmarked, ...q }) => q),
+    issues: raw.map((q) => (q.unmarked ? ["No se ha detectado la respuesta correcta"] : [])),
+    ignored: 0,
+  };
+}
+
+const BULK_EXAMPLE_GENERIC = `1. What is the past participle of "go"?
+A) Went
+B) Gone *
+C) Going
+D) Goes
+
+2. Where was the meeting held?
+A) In the office
+B) In the car
+C) At the airport
+D) At home
+Respuesta: C
+Justificación: "...the meeting took place at the airport."`;
+
+const BULK_EXAMPLE_READING = `Texto 1
+Sarah arrived at the office at 9am, but the meeting had already started. Her manager asked her to join quietly at the back of the room.
+
+1. What had happened before Sarah arrived?
+A) The meeting had already started *
+B) The meeting was cancelled
+C) Sarah started the meeting
+D) Nobody arrived
+Justificación: "...the meeting had already started."
+
+2. Who asked Sarah to join?
+A) A colleague
+B) Her manager
+C) The client
+D) Nobody
+Respuesta: B
+
+Texto 2
+The new library opens next Monday and will offer free English classes for adults every Thursday evening.
+
+3. When are the English classes?
+A) Every Monday
+B) Every Thursday evening *
+C) Every weekend
+D) Every morning`;
+
+function BulkPreview({ result }) {
+  const { cfg, sans } = useTheme();
+  const { questions, issues, ignored } = result;
+  if (!questions.length) {
+    return (
+      <p style={{ ...sans, color: cfg.colors.error }} className="text-xs">
+        Todavía no se detecta ninguna pregunta. Comprueba que cada pregunta empieza por un número (1. 2. 3.) y que las opciones empiezan
+        por A) B) C) D).
+      </p>
+    );
+  }
+  const toReview = issues.filter((p) => p.length).length;
+  const texts = new Set(questions.map((q) => q.passage).filter(Boolean)).size;
+  return (
+    <div className="border bg-white" style={{ borderColor: cfg.colors.line }}>
+      <div className="px-3 py-2 text-xs flex gap-x-4 gap-y-1 flex-wrap border-b" style={{ ...sans, borderColor: cfg.colors.line }}>
+        <span style={{ color: cfg.colors.ink }}><strong>{questions.length}</strong> pregunta{questions.length === 1 ? "" : "s"} detectada{questions.length === 1 ? "" : "s"}</span>
+        {texts > 0 && <span style={{ color: cfg.colors.ink }}><strong>{texts}</strong> texto{texts === 1 ? "" : "s"}</span>}
+        {toReview > 0 && (
+          <span style={{ color: cfg.colors.error }} className="flex items-center gap-1 font-semibold">
+            <AlertTriangle size={12} /> {toReview} por revisar
+          </span>
+        )}
+        {ignored > 0 && <span style={{ color: "#5B6472" }}>{ignored} línea{ignored === 1 ? "" : "s"} ignorada{ignored === 1 ? "" : "s"}</span>}
+      </div>
+      <ol className="max-h-80 overflow-y-auto divide-y" style={{ borderColor: cfg.colors.line }}>
+        {questions.map((q, i) => {
+          const prev = questions[i - 1];
+          const newPassage = q.passage && q.passage !== prev?.passage;
+          const newGroup = q.group && q.group !== prev?.group;
+          const problems = issues[i] || [];
+          const noAnswer = problems.some((p) => p.includes("respuesta"));
+          return (
+            <li key={q.id} className="px-3 py-2 text-xs" style={{ ...sans, borderColor: cfg.colors.line }}>
+              {newGroup && !q.passage && (
+                <div className="font-semibold mb-1" style={{ color: "#5B6472" }}>Grupo {q.group} (el audio que subas a una de sus preguntas se aplicará a todo el grupo)</div>
+              )}
+              {newPassage && (
+                <div className="mb-1.5 p-2 border text-[11px] leading-snug" style={{ borderColor: cfg.colors.line, backgroundColor: mix(cfg.colors.ink, "#ffffff", 0.96), color: "#5B6472" }}>
+                  <span className="font-semibold flex items-center gap-1 mb-0.5"><FileText size={11} /> Texto de las preguntas siguientes</span>
+                  <span className="line-clamp-2">{q.passage}</span>
+                </div>
+              )}
+              <div style={{ color: cfg.colors.ink }} className="font-medium">{i + 1}. {q.question}</div>
+              <ul className="mt-1 space-y-0.5">
+                {q.options.map((o, oi) => {
+                  const isCorrect = !noAnswer && oi === q.correctIndex;
+                  return (
+                    <li key={oi} className="flex items-start gap-1.5" style={{ color: isCorrect ? cfg.colors.success : "#5B6472", fontWeight: isCorrect ? 600 : 400 }}>
+                      <span className="w-4 shrink-0">{OPTION_LETTERS[oi]})</span>
+                      <span>{o}</span>
+                      {isCorrect && <Check size={12} className="mt-0.5 shrink-0" />}
+                    </li>
+                  );
+                })}
+              </ul>
+              {q.explanation && <div className="mt-1 italic" style={{ color: "#5B6472" }}>Justificación: {q.explanation}</div>}
+              {problems.map((p) => (
+                <div key={p} className="mt-1 flex items-center gap-1 font-semibold" style={{ color: cfg.colors.error }}>
+                  <AlertTriangle size={11} /> {p}
+                </div>
+              ))}
+            </li>
+          );
+        })}
+      </ol>
+    </div>
+  );
 }
 
 function ContentTab({ exercises, setExercises, track }) {
@@ -1953,7 +2303,17 @@ function ContentTab({ exercises, setExercises, track }) {
     setQuestionAudioBusyIndex(qIndex);
     try {
       const url = await api.uploadFile(file, "audio");
-      updateQuestion(qIndex, "audioUrl", url);
+      setForm((f) => {
+        const target = f.questions[qIndex];
+        return {
+          ...f,
+          questions: f.questions.map((q, i) => {
+            if (i === qIndex) return { ...q, audioUrl: url };
+            const sameGroup = target.group && q.group === target.group && !q.audioUrl;
+            return sameGroup ? { ...q, audioUrl: url } : q;
+          }),
+        };
+      });
     } catch {
       setMessage("No se pudo subir el audio de esa pregunta. Inténtalo de nuevo.");
     }
@@ -1985,8 +2345,10 @@ function ContentTab({ exercises, setExercises, track }) {
   function addQuestion() { setForm((f) => ({ ...f, questions: [...f.questions, EMPTY_QUESTION()] })); }
   function removeQuestion(qIndex) { setForm((f) => ({ ...f, questions: f.questions.filter((_, i) => i !== qIndex) })); }
 
+  const bulkResult = useMemo(() => (bulkText.trim() ? parseBulk(bulkText, form.type) : null), [bulkText, form.type]);
+
   function applyBulk(replace) {
-    const parsed = parseBulkQuestions(bulkText);
+    const parsed = bulkResult?.questions || [];
     if (parsed.length === 0) {
       setBulkMessage("No se ha detectado ninguna pregunta. Revisa el formato.");
       return;
@@ -2206,38 +2568,47 @@ function ContentTab({ exercises, setExercises, track }) {
 
               {bulkOpen && (
                 <div className="p-4 border space-y-2" style={{ borderColor: cfg.colors.line, backgroundColor: mix(cfg.colors.ink, "#ffffff", 0.96) }}>
-                  <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
-                    Pensado para exámenes tipo con muchas preguntas. Pega un bloque por pregunta, separado por una línea en blanco: la
-                    primera línea es la pregunta, las 4 siguientes son las opciones (marca la correcta con un asterisco * al final de esa
-                    línea), y si añades una línea más debajo de las opciones, se guarda como justificación de la respuesta. Esa línea es
-                    opcional. Si en Reading cada pregunta tiene su propio texto, ponlo al principio del bloque seguido de una línea con
-                    solo <code>---</code>. En Listening, el audio no se puede pegar como texto: pega aquí las preguntas y luego sube el
-                    audio de cada una individualmente, en el cuadro que aparece debajo de cada pregunta ya añadida. Ejemplo:
+                  <p style={{ ...sans, color: "#5B6472" }} className="text-xs leading-relaxed">
+                    Pega el contenido tal como lo tengas (desde Word, un PDF, ChatGPT…) y abajo verás al momento qué se ha detectado.
+                    Se reconoce solo:
                   </p>
-                  <pre style={{ ...sans, color: cfg.colors.ink, borderColor: cfg.colors.line }} className="text-xs bg-white border p-2 whitespace-pre-wrap">
-{`Sarah arrived at the office at 9am, but the meeting had already started.
----
-What happened before Sarah arrived?
-The meeting had already started *
-The meeting was cancelled
-Sarah started the meeting
-Nobody arrived
-The text says: "...the meeting had already started."
-
-What is the past participle of "go"?
-Went
-Gone *
-Going
-Goes`}
-                  </pre>
+                  <ul style={{ ...sans, color: "#5B6472" }} className="text-xs leading-relaxed list-disc pl-5 space-y-0.5">
+                    <li>Preguntas numeradas: <code>1.</code> <code>2)</code> <code>Pregunta 3:</code></li>
+                    <li>Opciones con letra: <code>A)</code> <code>B.</code> <code>c)</code> (de 2 a 6 opciones)</li>
+                    <li>Respuesta correcta: un <code>*</code> al final de la opción, o una línea <code>Respuesta: B</code></li>
+                    <li>Justificación (opcional): una línea <code>Justificación: …</code> debajo de las opciones</li>
+                    {form.type === "reading" && (
+                      <li>
+                        Textos: una línea <code>Texto 1</code> (o <code>Text 1</code>) y debajo el texto. Vale para todas las preguntas que
+                        vengan después, hasta el siguiente <code>Texto</code>.
+                      </li>
+                    )}
+                    {form.type === "listening" && (
+                      <li>
+                        Audios: una línea <code>Audio 1</code>, <code>Audio 2</code>… antes de cada grupo de preguntas. Luego sube el audio
+                        en una pregunta del grupo y se aplicará a todas las del mismo grupo.
+                      </li>
+                    )}
+                  </ul>
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setBulkText(form.type === "reading" ? BULK_EXAMPLE_READING : BULK_EXAMPLE_GENERIC)}
+                      className="text-xs underline"
+                      style={{ ...sans, color: "#5B6472" }}
+                    >
+                      Rellenar con un ejemplo
+                    </button>
+                  </div>
                   <textarea
                     value={bulkText}
                     onChange={(e) => setBulkText(e.target.value)}
-                    rows={8}
-                    placeholder="Pega aquí tu bloque de preguntas…"
+                    rows={10}
+                    placeholder="Pega aquí tus textos, preguntas y respuestas…"
                     className="w-full border px-3 py-2 text-sm font-mono"
                     style={{ borderColor: cfg.colors.line }}
                   />
+                  {bulkResult && <BulkPreview result={bulkResult} />}
                   <div className="flex items-center gap-3">
                     <button type="button" onClick={() => applyBulk(false)} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
                       Añadir estas preguntas
@@ -2267,7 +2638,7 @@ Goes`}
                   )}
                   {form.type === "listening" && (
                     <div className="text-xs" style={sans}>
-                      Audio de esta pregunta (opcional — si cada pregunta tiene su propia grabación)
+                      Audio de esta pregunta (opcional){q.group ? ` — pertenece al grupo ${q.group}: al subirlo se aplica a las demás preguntas del grupo` : " — si cada pregunta tiene su propia grabación"}
                       <div className="mt-1 flex items-center gap-3 flex-wrap">
                         <label
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-sm cursor-pointer w-fit"
