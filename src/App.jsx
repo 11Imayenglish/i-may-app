@@ -1930,7 +1930,8 @@ const MARKER_KW = "(?:texto|text|passage|lectura|reading|audio|listening|escucha
 const RE_OPTION = /^\(?([A-Fa-f])(?:\)\s*|[.:\-–]\s+)(\S.*)$/;
 const RE_QUESTION = /^(?:(?:q|question|pregunta|preg)\s*\.?\s*)?(\d{1,3})\s*[.)\-:–]\s*(\S.*)$/i;
 const RE_ANSWER = /^\W*(?:correct\s+answer|right\s+answer|correct|answer|ans|respuesta\s+correcta|respuesta|correcta|soluci[oó]n|solution|clave|key)\s*[:=\-–]\s*\(?([A-Fa-f]|[1-6])\b/i;
-const RE_EXPLANATION = /^\W*(?:explicaci[oó]n|justificaci[oó]n|explanation|justification|rationale)\s*[:\-–]\s*(.*)$/i;
+const RE_EXPLANATION = /^\W*(?:justificaci[oó]n|explicaci[oó]n|explanation|justification|rationale|reasoning|motivo)\b[^:\-–\n]{0,40}[:\-–]\s*(.*)$/i;
+const RE_EVIDENCE = /^\W*(?:texto|text|passage|lectura|cita|quote|evidence|evidencia)\s*:\s*(.*)$/i;
 const RE_MARKER = new RegExp(`^${MARKER_KW}\\s*\\d+\\s*[:.\\-–)]\\s*(.*)$|^${MARKER_KW}\\s*:\\s*(.*)$|^${MARKER_KW}\\s*\\d*\\s*$`, "i");
 const RE_SEPARATOR = /^(?:-{3,}|\*{3,}|_{3,})$/;
 
@@ -2038,6 +2039,15 @@ function parseStructuredBulk(text, type) {
       continue;
     }
 
+    // "Texto: ..." / "Cita: ..." right under the options is the justification, not a new text.
+    const ev = cur && cur.options.length >= 2 && !cur.explanation ? s.match(RE_EVIDENCE) : null;
+    if (ev) {
+      cur.explanation = ev[1].trim();
+      cur.inExplanation = true;
+      cur.closed = true;
+      continue;
+    }
+
     const mk = s.match(RE_MARKER);
     if (mk) {
       finish();
@@ -2069,6 +2079,13 @@ function parseStructuredBulk(text, type) {
         const ch = am[1];
         cur.answer = /\d/.test(ch) ? Number(ch) - 1 : ch.toUpperCase().charCodeAt(0) - 65;
         cur.closed = true;
+        // "Respuesta: B. Justificación: ..." or "Answer: B - because ..." on the same line.
+        const tail = s.slice(am[0].length).replace(/^[).\s,;:\-–]+/, "").trim();
+        if (tail) {
+          const tm = tail.match(RE_EXPLANATION);
+          cur.explanation = (tm ? tm[1] : tail).trim();
+          cur.inExplanation = true;
+        }
         continue;
       }
       const em = s.match(RE_EXPLANATION);
@@ -2087,12 +2104,27 @@ function parseStructuredBulk(text, type) {
         continue;
       }
       if (cur.closed) {
+        // Outside Reading there are no loose texts, so a stray line after the
+        // question can only be its justification.
+        if (!allowPassage && cur.options.length >= 2 && !cur.explanation) {
+          cur.explanation = s;
+          cur.inExplanation = true;
+          continue;
+        }
         finish();
         pushLoose(s);
         continue;
       }
       if (cur.options.length === 0) {
         cur.question += ` ${s}`;
+        continue;
+      }
+      // A plain line right under the options is the justification, unless it
+      // looks like a wrapped option (starts in lowercase).
+      if (cur.options.length >= 2 && !/^[a-záéíóúñ]/.test(s)) {
+        cur.explanation = s;
+        cur.inExplanation = true;
+        cur.closed = true;
         continue;
       }
       const { text: more, correct } = stripCorrectMarker(s);
