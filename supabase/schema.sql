@@ -30,7 +30,9 @@ create table if not exists exercises (
   date_added timestamptz not null default now(),
   audio_url text default '',
   theory_file_url text default '',
-  theory_file_name text default ''
+  theory_file_name text default '',
+  part text default '',
+  duration_minutes int
 );
 
 create table if not exists articles (

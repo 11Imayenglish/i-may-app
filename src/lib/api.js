@@ -111,7 +111,16 @@ function rowToExercise(r) {
     audioUrl: r.audio_url || "",
     theoryFileUrl: r.theory_file_url || "",
     theoryFileName: r.theory_file_name || "",
+    part: r.part || "",
+    durationMinutes: r.duration_minutes || null,
   };
+}
+
+// Columns added later are only sent when used, so publishing keeps working
+// even before the matching migration has been run.
+function optionalExerciseColumns(ex) {
+  if (!ex.part) return {};
+  return { part: ex.part, duration_minutes: ex.durationMinutes ? Number(ex.durationMinutes) : null };
 }
 
 export async function fetchExercises() {
@@ -141,6 +150,7 @@ export async function insertExercise(ex) {
     audio_url: ex.audioUrl || "",
     theory_file_url: ex.theoryFileUrl || "",
     theory_file_name: ex.theoryFileName || "",
+    ...optionalExerciseColumns(ex),
   };
   const { data, error } = await supabase.from("exercises").insert(row).select().single();
   if (error) throw error;
@@ -160,6 +170,7 @@ export async function updateExercise(id, ex) {
     audio_url: ex.audioUrl || "",
     theory_file_url: ex.theoryFileUrl || "",
     theory_file_name: ex.theoryFileName || "",
+    ...optionalExerciseColumns(ex),
   };
   const { data, error } = await supabase.from("exercises").update(row).eq("id", id).select().single();
   if (error) throw error;

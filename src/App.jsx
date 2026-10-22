@@ -216,6 +216,129 @@ function matchesLevel(itemLevel, userLevel) {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Cambridge exams (civil area): exam (= level) → part → exercise     */
+/* ------------------------------------------------------------------ */
+// `type` is the app category the part lives under; `kind` is the default
+// question style: "choice" (pick an option), "text" (type the answer, checked
+// automatically) or "none" (writing prompt, no questions). Each question can
+// still switch kind in the editor.
+function camPart(section, sectionLabel, n, title, type, kind = "choice") {
+  return { key: `${section}-${n}`, section, sectionLabel, n, label: `Part ${n}`, title, type, kind };
+}
+
+const CAMBRIDGE_EXAMS = {
+  B1: {
+    name: "B1 Preliminary (PET)",
+    short: "PET",
+    parts: [
+      camPart("reading", "Reading", 1, "Multiple choice", "reading"),
+      camPart("reading", "Reading", 2, "Matching", "reading"),
+      camPart("reading", "Reading", 3, "Multiple choice", "reading"),
+      camPart("reading", "Reading", 4, "Gapped text", "reading"),
+      camPart("reading", "Reading", 5, "Multiple-choice cloze", "reading"),
+      camPart("writing", "Writing", 1, "Email", "writing", "none"),
+      camPart("writing", "Writing", 2, "Article or story", "writing", "none"),
+      camPart("listening", "Listening", 1, "Multiple choice", "listening"),
+      camPart("listening", "Listening", 2, "Multiple choice", "listening"),
+      camPart("listening", "Listening", 3, "Gap fill", "listening", "text"),
+      camPart("listening", "Listening", 4, "Multiple choice", "listening"),
+    ],
+  },
+  B2: {
+    name: "B2 First (FCE)",
+    short: "FCE",
+    parts: [
+      camPart("rue", "Reading and Use of English", 1, "Multiple-choice cloze", "grammar"),
+      camPart("rue", "Reading and Use of English", 2, "Open cloze", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 3, "Word formation", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 4, "Key word transformation", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 5, "Multiple choice", "reading"),
+      camPart("rue", "Reading and Use of English", 6, "Gapped text", "reading"),
+      camPart("rue", "Reading and Use of English", 7, "Multiple matching", "reading"),
+      camPart("writing", "Writing", 1, "Essay", "writing", "none"),
+      camPart("writing", "Writing", 2, "Article, email/letter, report or review", "writing", "none"),
+      camPart("listening", "Listening", 1, "Multiple choice", "listening"),
+      camPart("listening", "Listening", 2, "Sentence completion", "listening", "text"),
+      camPart("listening", "Listening", 3, "Multiple matching", "listening"),
+      camPart("listening", "Listening", 4, "Multiple choice", "listening"),
+    ],
+  },
+  C1: {
+    name: "C1 Advanced (CAE)",
+    short: "CAE",
+    parts: [
+      camPart("rue", "Reading and Use of English", 1, "Multiple-choice cloze", "grammar"),
+      camPart("rue", "Reading and Use of English", 2, "Open cloze", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 3, "Word formation", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 4, "Key word transformation", "grammar", "text"),
+      camPart("rue", "Reading and Use of English", 5, "Multiple choice", "reading"),
+      camPart("rue", "Reading and Use of English", 6, "Cross-text multiple matching", "reading"),
+      camPart("rue", "Reading and Use of English", 7, "Gapped text", "reading"),
+      camPart("rue", "Reading and Use of English", 8, "Multiple matching", "reading"),
+      camPart("writing", "Writing", 1, "Essay", "writing", "none"),
+      camPart("writing", "Writing", 2, "Letter/email, proposal, report or review", "writing", "none"),
+      camPart("listening", "Listening", 1, "Multiple choice", "listening"),
+      camPart("listening", "Listening", 2, "Sentence completion", "listening", "text"),
+      camPart("listening", "Listening", 3, "Multiple choice", "listening"),
+      camPart("listening", "Listening", 4, "Multiple matching", "listening"),
+    ],
+  },
+};
+const CAMBRIDGE_LEVELS = Object.keys(CAMBRIDGE_EXAMS);
+const CAM_KIND_HINT = {
+  choice: "Opción múltiple (A, B, C…)",
+  text: "El alumno escribe la respuesta · se corrige sola",
+  none: "Enunciado de la redacción · el alumno la entrega como indiques",
+};
+
+function camPartOf(level, key) {
+  return CAMBRIDGE_EXAMS[level]?.parts.find((p) => p.key === key) || null;
+}
+
+// Parts grouped by exam section, keeping their order.
+function camSections(parts) {
+  const out = [];
+  parts.forEach((p) => {
+    let s = out.find((x) => x.key === p.section);
+    if (!s) {
+      s = { key: p.section, label: p.sectionLabel, parts: [] };
+      out.push(s);
+    }
+    s.parts.push(p);
+  });
+  return out;
+}
+
+/* ---- Answers typed by the student (Use of English, gap fills…) ---- */
+function splitAnswers(s) {
+  return s
+    .split(/\s*(?:\/|\||;)\s*/)
+    .map((a) => a.trim())
+    .filter(Boolean);
+}
+
+function normalizeAnswer(s) {
+  return String(s || "")
+    .toLowerCase()
+    .replace(/[’‘`´]/g, "'")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.!?,;:]+$/, "");
+}
+
+function isAnswerCorrect(q, answer) {
+  if (q.kind === "text") {
+    const given = normalizeAnswer(answer);
+    return !!given && (q.answers || []).some((a) => normalizeAnswer(a) === given);
+  }
+  return answer === q.correctIndex;
+}
+
+function isAnswered(q, answer) {
+  return q.kind === "text" ? String(answer || "").trim() !== "" : answer !== undefined;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Theme context — every component reads live config from here        */
 /* ------------------------------------------------------------------ */
 const ThemeContext = createContext(null);
@@ -517,7 +640,13 @@ function IntroBlock({ exercises, setView, track, userLevel }) {
         </p>
         <div className="flex flex-wrap gap-3">
           <button
-            onClick={() => setView({ name: recent[0] ? recent[0].type : "grammar", focusId: recent[0]?.id })}
+            onClick={() =>
+              setView(
+                recent[0]?.part
+                  ? { name: "detail", id: recent[0].id, from: recent[0].type }
+                  : { name: recent[0] ? recent[0].type : "grammar", focusId: recent[0]?.id }
+              )
+            }
             className="px-5 py-3 text-sm font-semibold rounded-sm"
             style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}
           >
@@ -555,7 +684,10 @@ function IntroBlock({ exercises, setView, track, userLevel }) {
           <ul className="space-y-3">
             {recent.map((e) => (
               <li key={e.id}>
-                <button onClick={() => setView({ name: e.type, focusId: e.id })} className="w-full flex items-start gap-3 text-left group">
+                <button
+                  onClick={() => setView(e.part ? { name: "detail", id: e.id, from: e.type } : { name: e.type, focusId: e.id })}
+                  className="w-full flex items-start gap-3 text-left group"
+                >
                   <span className="mt-0.5 shrink-0">
                     <CategoryIcon catKey={e.type} size={16} style={{ color: t.accent }} />
                   </span>
@@ -969,6 +1101,179 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
   );
 }
 
+// Civil area: each category lists its Cambridge parts, and each part its exercises.
+function CambridgeCategory({ type, exercises, materials, setView, initialPart, track, submissions, currentUser }) {
+  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const t = trackInfo(track);
+  const userLevel = currentUser?.level;
+  const fixedExam = CAMBRIDGE_LEVELS.includes(userLevel) ? userLevel : null;
+  const [examPick, setExamPick] = useState("B2");
+  const exam = fixedExam || examPick;
+  const hasExam = !!fixedExam || !userLevel;
+  const parts = useMemo(() => (hasExam ? CAMBRIDGE_EXAMS[exam].parts.filter((p) => p.type === type) : []), [hasExam, exam, type]);
+  const mine = useMemo(
+    () => exercises.filter((e) => e.type === type && e.track === track && matchesLevel(e.level, userLevel)),
+    [exercises, type, track, userLevel]
+  );
+  const others = useMemo(() => mine.filter((e) => !e.part), [mine]);
+  const [sel, setSel] = useState(initialPart || parts[0]?.key || "other");
+
+  useEffect(() => {
+    if (sel === "other" ? others.length > 0 : parts.some((p) => p.key === sel)) return;
+    setSel(parts[0]?.key || "other");
+  }, [parts, others.length, sel]);
+
+  function priorFor(exerciseId) {
+    if (!currentUser || !submissions) return null;
+    return submissions.find((s) => s.userId === currentUser.id && s.exerciseId === exerciseId) || null;
+  }
+
+  const partDef = parts.find((p) => p.key === sel);
+  const list =
+    sel === "other"
+      ? [...others].sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded))
+      : mine.filter((e) => e.part === sel && e.level === exam).sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+  const countFor = (key) => mine.filter((e) => e.part === key && e.level === exam).length;
+  const tab = (active) => ({
+    ...sans,
+    backgroundColor: active ? colors.ink : colors.card,
+    color: active ? colors.bg : colors.ink,
+    borderColor: active ? colors.ink : colors.line,
+  });
+
+  return (
+    <div className="max-w-4xl mx-auto px-6 py-12">
+      <div className="flex items-center gap-3 mb-2 flex-wrap">
+        <CategoryIcon catKey={type} size={22} style={{ color: t.accent }} />
+        <h2 style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold">
+          {cfg.categoryLabels[type]}
+        </h2>
+        <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep, ...sans }}>
+          {t.label}
+        </span>
+        {userLevel && (
+          <span className="text-[10px] font-semibold uppercase px-2 py-1 rounded-sm border" style={{ borderColor: colors.line, color: "#5B6472", ...sans }}>
+            Tu nivel: {userLevel}
+          </span>
+        )}
+      </div>
+      <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
+
+      {type === "writing" && cfg.copy[track].writingSubmission?.trim() && (
+        <div className="p-5 mb-8 border" style={{ borderColor: t.accent, backgroundColor: t.accentSoft }}>
+          <div className="flex items-center gap-2 mb-2">
+            <FileText size={16} style={{ color: t.accentDeep }} />
+            <span style={{ ...sans, color: t.accentDeep }} className="text-sm font-semibold">Cómo entregar tu redacción</span>
+          </div>
+          <p style={{ ...sans, color: t.accentDeep }} className="text-sm leading-relaxed whitespace-pre-line">
+            {cfg.copy[track].writingSubmission}
+          </p>
+        </div>
+      )}
+
+      <MaterialsSection materials={materials} type={type} track={track} userLevel={userLevel} />
+
+      {hasExam && (
+        <div className="flex items-center gap-2 flex-wrap mb-5">
+          {fixedExam ? (
+            <span style={{ ...sans, color: colors.ink }} className="text-sm font-semibold">{CAMBRIDGE_EXAMS[fixedExam].name}</span>
+          ) : (
+            CAMBRIDGE_LEVELS.map((level) => (
+              <button key={level} onClick={() => setExamPick(level)} className="px-3 py-1.5 text-sm font-semibold border rounded-sm" style={tab(exam === level)}>
+                {CAMBRIDGE_EXAMS[level].name}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+
+      {parts.length === 0 && others.length === 0 ? (
+        <p style={{ ...sans, color: "#5B6472" }}>
+          Todavía no hay contenido en esta sección para el área {t.label.toLowerCase()}.
+        </p>
+      ) : (
+        <>
+          <div className="flex items-center gap-2 flex-wrap mb-6">
+            {parts.map((p) => {
+              const n = countFor(p.key);
+              return (
+                <button
+                  key={p.key}
+                  onClick={() => setSel(p.key)}
+                  title={p.title}
+                  className="px-3 py-2 text-sm font-medium border rounded-sm flex items-center gap-2"
+                  style={tab(sel === p.key)}
+                >
+                  {p.label}
+                  <span className="text-[10px] opacity-70">{n}</span>
+                </button>
+              );
+            })}
+            {others.length > 0 && (
+              <button onClick={() => setSel("other")} className="px-3 py-2 text-sm font-medium border rounded-sm" style={tab(sel === "other")}>
+                Otros ejercicios
+              </button>
+            )}
+          </div>
+
+          {partDef && (
+            <div className="mb-5">
+              <h3 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold">
+                {partDef.sectionLabel} · {partDef.label}
+                <span style={{ color: "#5B6472" }} className="font-normal"> — {partDef.title}</span>
+              </h3>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-0.5">{CAM_KIND_HINT[partDef.kind]}</p>
+            </div>
+          )}
+
+          {list.length === 0 ? (
+            <p style={{ ...sans, color: "#5B6472" }}>Todavía no hay ejercicios en esta parte.</p>
+          ) : (
+            <ul className="space-y-3">
+              {list.map((e, i) => {
+                const prior = priorFor(e.id);
+                return (
+                  <li key={e.id}>
+                    <button
+                      onClick={() => setView({ name: "detail", id: e.id, from: type })}
+                      className="w-full flex items-center justify-between gap-4 p-4 border text-left hover:shadow-sm transition-shadow"
+                      style={{ borderColor: colors.line, backgroundColor: colors.card }}
+                    >
+                      <div>
+                        <div style={{ ...sans, color: colors.ink }} className="font-medium">
+                          Ejercicio {i + 1}
+                          {e.title ? <span style={{ color: "#5B6472" }} className="font-normal"> · {e.title}</span> : null}
+                        </div>
+                        <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-2 mt-1 flex-wrap">
+                          {e.questions?.length > 0 && <span>{e.questions.length} preguntas</span>}
+                          {e.durationMinutes > 0 && (
+                            <span className="flex items-center gap-1"><Clock size={12} /> {e.durationMinutes} min</span>
+                          )}
+                          {isRecent(e.dateAdded) && (
+                            <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold uppercase" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>
+                              Nuevo
+                            </span>
+                          )}
+                          {prior && (
+                            <span className="px-1.5 py-0.5 rounded-sm text-[10px] font-semibold uppercase" style={{ backgroundColor: mix(colors.success, "#ffffff", 0.85), color: colors.success }}>
+                              Hecho: {prior.score}/{prior.total}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <LevelBadge level={e.level} accent={t.accent} />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 /* ------------------------------------------------------------------ */
 /*  Exercise detail                                                     */
 /* ------------------------------------------------------------------ */
@@ -999,9 +1304,45 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
           {q.passage}
         </div>
       )}
-      <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3">
+      <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3 whitespace-pre-line">
         {index + 1}. {q.question}
       </p>
+      {q.kind === "text" ? (
+        <div>
+          {(() => {
+            const correct = isAnswerCorrect(q, selected);
+            const tone = showFeedback ? (correct ? colors.success : colors.error) : colors.ink;
+            return (
+              <>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={selected || ""}
+                    disabled={locked}
+                    onChange={(e) => onAnswer(e.target.value)}
+                    placeholder="Escribe tu respuesta…"
+                    autoComplete="off"
+                    spellCheck={false}
+                    className="w-full sm:w-96 border px-3 py-2 text-sm rounded-sm"
+                    style={{
+                      ...sans,
+                      color: tone,
+                      borderColor: showFeedback ? tone : colors.line,
+                      backgroundColor: showFeedback ? mix(tone, "#ffffff", 0.92) : colors.card,
+                    }}
+                  />
+                  {showFeedback && (correct ? <Check size={16} style={{ color: colors.success }} /> : <X size={16} style={{ color: colors.error }} />)}
+                </div>
+                {showFeedback && !correct && (
+                  <p style={{ ...sans, color: colors.success }} className="text-xs mt-1.5">
+                    Respuesta correcta: <strong>{(q.answers || []).join("  /  ")}</strong>
+                  </p>
+                )}
+              </>
+            );
+          })()}
+        </div>
+      ) : (
       <div className="grid sm:grid-cols-2 gap-2">
         {q.options.map((opt, i) => {
           const isCorrect = i === q.correctIndex;
@@ -1019,6 +1360,7 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
           );
         })}
       </div>
+      )}
       {showFeedback && q.explanation && (
         <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2 italic">
           {q.explanation}
@@ -1063,12 +1405,19 @@ const EXAM_DURATION_SECONDS = 60 * 60;
 function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission, onRecordSubmission }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
-  const examMode = exercise.type === "listening" || exercise.type === "reading";
+  // Cambridge part exercises: fixed question order (the gaps are numbered in
+  // the text), corrected when the student finishes, optional time limit.
+  const isCambridge = !!exercise.part;
+  const legacyExam = !isCambridge && (exercise.type === "listening" || exercise.type === "reading");
+  const examMode = (legacyExam || isCambridge) && exercise.type !== "writing";
+  const timerSeconds = legacyExam ? EXAM_DURATION_SECONDS : exercise.durationMinutes ? exercise.durationMinutes * 60 : 0;
+  const hasTimer = timerSeconds > 0;
   const [answers, setAnswers] = useState({});
   const [transcriptShown, setTranscriptShown] = useState(false);
   const [playing, setPlaying] = useState(false);
   const [finished, setFinished] = useState(!examMode);
-  const [secondsLeft, setSecondsLeft] = useState(EXAM_DURATION_SECONDS);
+  const [secondsLeft, setSecondsLeft] = useState(timerSeconds);
+  const [attempt, setAttempt] = useState(0);
   const [displayQuestions, setDisplayQuestions] = useState(exercise.questions || []);
   const submittedRef = useRef(false);
 
@@ -1077,17 +1426,17 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     setTranscriptShown(false);
     submittedRef.current = false;
     setFinished(!examMode);
-    setSecondsLeft(EXAM_DURATION_SECONDS);
-    // Listening/Reading exams get a fresh question order every time, so
+    setSecondsLeft(timerSeconds);
+    // Legacy Listening/Reading exams get a fresh question order every time, so
     // getting the same exam twice doesn't mean the same 30 questions in the
     // same sequence.
-    setDisplayQuestions(examMode ? shuffleGrouped(exercise.questions || []) : (exercise.questions || []));
-  }, [exercise.id, currentUser, examMode]);
+    setDisplayQuestions(legacyExam ? shuffleGrouped(exercise.questions || []) : (exercise.questions || []));
+  }, [exercise.id, currentUser, examMode, legacyExam, timerSeconds, attempt]);
 
-  const handleAnswer = useCallback((qId, i) => setAnswers((prev) => ({ ...prev, [qId]: i })), []);
+  const handleAnswer = useCallback((qId, value) => setAnswers((prev) => ({ ...prev, [qId]: value })), []);
   const total = displayQuestions.length || 0;
-  const answeredCount = Object.keys(answers).length;
-  const score = displayQuestions.reduce((acc, q) => (answers[q.id] === q.correctIndex ? acc + 1 : acc), 0) || 0;
+  const answeredCount = displayQuestions.filter((q) => isAnswered(q, answers[q.id])).length;
+  const score = displayQuestions.reduce((acc, q) => (isAnswerCorrect(q, answers[q.id]) ? acc + 1 : acc), 0) || 0;
 
   const recordScore = useCallback(() => {
     if (submittedRef.current || !currentUser || !onRecordSubmission || total === 0) return;
@@ -1123,14 +1472,14 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   // Listening/Reading run on a 60-minute countdown; time's up finishes the
   // exam for them, same as clicking "Finalizar examen".
   useEffect(() => {
-    if (!examMode || finished) return;
+    if (!examMode || finished || !hasTimer) return;
     if (secondsLeft <= 0) {
       finishExam();
       return;
     }
     const timer = setTimeout(() => setSecondsLeft((s) => s - 1), 1000);
     return () => clearTimeout(timer);
-  }, [examMode, finished, secondsLeft, finishExam]);
+  }, [examMode, finished, hasTimer, secondsLeft, finishExam]);
 
   function playAudio() {
     if (!("speechSynthesis" in window)) return;
@@ -1146,9 +1495,18 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12">
-      <button onClick={() => setView({ name: exercise.type })} className="flex items-center gap-1 text-sm mb-6" style={{ ...sans, color: "#5B6472" }}>
+      <button
+        onClick={() => setView(isCambridge ? { name: exercise.type, part: exercise.part } : { name: exercise.type })}
+        className="flex items-center gap-1 text-sm mb-6"
+        style={{ ...sans, color: "#5B6472" }}
+      >
         <ChevronLeft size={16} /> Volver a {cfg.categoryLabels[exercise.type]}
       </button>
+      {isCambridge && camPartOf(exercise.level, exercise.part) && (
+        <p style={{ ...sans, color: t.accentDeep }} className="text-[11px] font-semibold uppercase tracking-widest mb-2">
+          {CAMBRIDGE_EXAMS[exercise.level].short} · {camPartOf(exercise.level, exercise.part).sectionLabel} · {camPartOf(exercise.level, exercise.part).label} — {camPartOf(exercise.level, exercise.part).title}
+        </p>
+      )}
 
       <div className="flex items-center gap-3 mb-1">
         <CategoryIcon catKey={exercise.type} size={20} style={{ color: t.accent }} />
@@ -1180,14 +1538,20 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
           style={{ borderColor: t.accent, backgroundColor: colors.bg, ...sans }}
         >
           <div className="flex items-center gap-2">
-            <Clock size={16} style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} />
-            <span style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} className="text-lg font-semibold tabular-nums">
-              {formatCountdown(secondsLeft)}
-            </span>
-            <span style={{ color: "#5B6472" }} className="text-xs">tiempo restante · {answeredCount}/{total} respondidas</span>
+            {hasTimer ? (
+              <>
+                <Clock size={16} style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} />
+                <span style={{ color: secondsLeft <= 300 ? colors.error : colors.ink }} className="text-lg font-semibold tabular-nums">
+                  {formatCountdown(secondsLeft)}
+                </span>
+                <span style={{ color: "#5B6472" }} className="text-xs">tiempo restante · {answeredCount}/{total} respondidas</span>
+              </>
+            ) : (
+              <span style={{ color: colors.ink }} className="text-sm font-medium">{answeredCount}/{total} respondidas</span>
+            )}
           </div>
           <button onClick={finishExam} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ backgroundColor: colors.ink, color: colors.bg }}>
-            Finalizar examen
+            {isCambridge ? "Corregir" : "Finalizar examen"}
           </button>
         </div>
       )}
@@ -1200,9 +1564,14 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
               Tu resultado: {score} / {total}
             </span>
           </div>
+          {isCambridge && (
+            <button onClick={() => setAttempt((a) => a + 1)} className="mb-4 text-xs font-semibold underline" style={{ ...sans, color: t.accentDeep }}>
+              Repetir este ejercicio
+            </button>
+          )}
           <div className="flex flex-wrap gap-1.5">
             {displayQuestions.map((q, i) => {
-              const correct = answers[q.id] === q.correctIndex;
+              const correct = isAnswerCorrect(q, answers[q.id]);
               return (
                 <a
                   key={q.id}
@@ -1241,8 +1610,8 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </a>
       )}
 
-      {exercise.type === "reading" && exercise.passage && (
-        <div className="p-5 mb-8 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
+      {(exercise.type === "reading" || (isCambridge && exercise.type === "grammar")) && exercise.passage && (
+        <div className="p-5 mb-8 border text-sm leading-relaxed whitespace-pre-line" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
           {exercise.passage}
         </div>
       )}
@@ -1262,9 +1631,11 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
               </p>
             </>
           )}
-          <button onClick={() => setTranscriptShown((s) => !s)} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
-            {transcriptShown ? "Ocultar transcripción" : "Ver transcripción"}
-          </button>
+          {(!isCambridge || finished) && (
+            <button onClick={() => setTranscriptShown((s) => !s)} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+              {transcriptShown ? "Ocultar transcripción" : "Ver transcripción"}
+            </button>
+          )}
           {transcriptShown && (
             <p style={{ ...sans, color: colors.ink, borderColor: colors.line }} className="text-sm leading-relaxed border-t pt-3 mt-1">
               {exercise.passage}
@@ -1869,9 +2240,36 @@ function AdminGate({ profile, onLogout, children }) {
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Contenido (exercise CRUD)                              */
 /* ------------------------------------------------------------------ */
-const EMPTY_QUESTION = () => ({ id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "", audioUrl: "" });
+const EMPTY_QUESTION = (kind = "choice") =>
+  kind === "text"
+    ? { id: uid(), kind: "text", question: "", options: [], correctIndex: 0, answers: [], explanation: "", passage: "", audioUrl: "" }
+    : { id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "", audioUrl: "" };
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
+}
+
+function blankCambridgeForm(level, part, existingCount) {
+  return {
+    ...emptyForm(part.type, "civil"),
+    level,
+    part: part.key,
+    title: `${part.label} – Ejercicio ${existingCount + 1}`,
+    questions: part.kind === "none" ? [] : [EMPTY_QUESTION(part.kind)],
+  };
+}
+
+// What gets saved for each question (drops editor-only fields).
+function cleanQuestion(q) {
+  const { answersRaw, ...rest } = q;
+  if (rest.kind === "text") {
+    return { ...rest, options: [], correctIndex: 0, answers: (rest.answers || []).map((a) => a.trim()).filter(Boolean) };
+  }
+  const { kind, answers, ...choice } = rest;
+  return choice;
+}
+
+function isQuestionComplete(q) {
+  return q.kind === "text" ? (q.answers || []).some((a) => a.trim()) : q.question.trim() && q.options.every((o) => o.trim());
 }
 
 // Old format: one block per question separated by blank lines, first line is
@@ -1925,11 +2323,13 @@ function parseLegacyBulk(text) {
 }
 
 /* ---- Smart paste: numbered questions, lettered options, answer lines, shared texts ---- */
-const OPTION_LETTERS = "ABCDEF";
+const OPTION_LETTERS = "ABCDEFGH";
 const MARKER_KW = "(?:texto|text|passage|lectura|reading|audio|listening|escucha|grabaci[oó]n)";
-const RE_OPTION = /^\(?([A-Fa-f])(?:\)\s*|[.:\-–]\s+)(\S.*)$/;
+const RE_OPTION = /^\(?([A-Ha-h])(?:\)\s*|[.:\-–]\s+)(\S.*)$/;
 const RE_QUESTION = /^(?:(?:q|question|pregunta|preg)\s*\.?\s*)?(\d{1,3})\s*[.)\-:–]\s*(\S.*)$/i;
-const RE_ANSWER = /^\W*(?:correct\s+answer|right\s+answer|correct|answer|ans|respuesta\s+correcta|respuesta|correcta|soluci[oó]n|solution|clave|key)\s*[:=\-–]\s*\(?([A-Fa-f]|[1-6])\b/i;
+const RE_ANSWER = /^\W*(?:correct\s+answer|right\s+answer|correct|answer|ans|respuesta\s+correcta|respuesta|correcta|soluci[oó]n|solution|clave|key)\s*[:=\-–]\s*\(?([A-Ha-h]|[1-8])\b/i;
+// Typed-answer parts: everything after "Respuesta:" is the accepted answer(s).
+const RE_TEXT_ANSWER = /^\W*(?:answers?|respuestas?(?:\s+correctas?)?|correct(?:\s+answers?)?|correcta|soluci[oó]n|solution|clave|key)\s*[:=\-–]\s*(.+)$/i;
 const RE_EXPLANATION = /^\W*(?:justificaci[oó]n|explicaci[oó]n|explanation|justification|rationale|reasoning|motivo)\b[^:\-–\n]{0,40}[:\-–]\s*(.*)$/i;
 const RE_EVIDENCE = /^\W*(?:texto|text|passage|lectura|cita|quote|evidence|evidencia)\s*:\s*(.*)$/i;
 const RE_MARKER = new RegExp(`^${MARKER_KW}\\s*\\d+\\s*[:.\\-–)]\\s*(.*)$|^${MARKER_KW}\\s*:\\s*(.*)$|^${MARKER_KW}\\s*\\d*\\s*$`, "i");
@@ -1939,8 +2339,9 @@ function normalizeBulkLine(raw) {
   let s = raw.trim();
   let flagged = /^\*\*[^*].*\*\*$/.test(s) || /^__[^_].*__$/.test(s);
   s = s.replace(/^#{1,6}\s*/, "");
-  s = s.replace(/^[-•·▪]\s+(?=\(?[A-Fa-f](?:\)|[.:\-–]\s))/, "");
-  s = s.replace(/\*\*|__/g, "").trim();
+  s = s.replace(/^[-•·▪]\s+(?=\(?[A-Ha-h](?:\)|[.:\-–]\s))/, "");
+  // Drop markdown bold markers, but keep runs of underscores: they are gaps ("She ______ tired").
+  s = s.replace(/\*\*/g, "").replace(/__(?=[^\W_])(.*?[^\W_])__/g, "$1").trim();
   if (/^(?:✓|✔|✅)\s*/.test(s)) {
     flagged = true;
     s = s.replace(/^(?:✓|✔|✅)\s*/, "");
@@ -2158,7 +2559,85 @@ function looksStructured(text) {
   return labeled >= 2 || answers >= 1 || (numbered >= 1 && labeled >= 1);
 }
 
-function parseBulk(text, type) {
+// Typed-answer parts (open cloze, word formation, key word transformation,
+// gap fill…). Two shapes are understood:
+//   1. Answer key:  "1. of / from"   → gap 1, accepted answers "of" or "from"
+//   2. Full items:  "1. <sentence / key word / gapped sentence>" followed by
+//                   "Respuesta: had been waiting / 'd been waiting"
+function parseTextBulk(text) {
+  const lines = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((l) => normalizeBulkLine(l).s)
+    .filter(Boolean);
+  const keyMode = !lines.some((l) => RE_TEXT_ANSWER.test(l));
+  const questions = [];
+  const issues = [];
+  let ignored = 0;
+  let cur = null;
+
+  const finish = () => {
+    if (!cur) return;
+    // A short single line without "Respuesta:" in a mixed paste is an answer-key entry.
+    if (!cur.answers.length && cur.lines.length === 1) {
+      const alts = splitAnswers(cur.lines[0]);
+      if (alts.length && alts.every((a) => a.split(/\s+/).length <= 5)) {
+        cur.answers = alts;
+        cur.lines = [];
+      }
+    }
+    const problems = [];
+    if (!cur.answers.length) problems.push("No se ha detectado la respuesta correcta");
+    questions.push({
+      id: uid(),
+      kind: "text",
+      question: cur.lines.join("\n").trim(),
+      options: [],
+      correctIndex: 0,
+      answers: cur.answers,
+      explanation: cur.explanation.trim(),
+      passage: "",
+      audioUrl: "",
+    });
+    issues.push(problems);
+    cur = null;
+  };
+
+  for (const l of lines) {
+    const qm = l.match(RE_QUESTION);
+    if (qm) {
+      finish();
+      cur = { lines: [], answers: [], explanation: "", inExplanation: false };
+      if (keyMode) cur.answers = splitAnswers(qm[2]);
+      else cur.lines.push(qm[2]);
+      continue;
+    }
+    if (!cur) {
+      ignored += 1;
+      continue;
+    }
+    const am = l.match(RE_TEXT_ANSWER);
+    if (am) {
+      cur.answers = splitAnswers(am[1]);
+      cur.inExplanation = false;
+      continue;
+    }
+    const em = l.match(RE_EXPLANATION) || l.match(RE_EVIDENCE);
+    if (em) {
+      cur.explanation = em[1].trim();
+      cur.inExplanation = true;
+      continue;
+    }
+    if (cur.inExplanation) cur.explanation += ` ${l}`;
+    else if (!keyMode) cur.lines.push(l);
+    else ignored += 1;
+  }
+  finish();
+  return { questions, issues, ignored };
+}
+
+function parseBulk(text, type, kind = "choice") {
+  if (kind === "text") return parseTextBulk(text);
   if (looksStructured(text)) return parseStructuredBulk(text, type);
   const raw = parseLegacyBulk(text);
   return {
@@ -2208,14 +2687,27 @@ B) Every Thursday evening *
 C) Every weekend
 D) Every morning`;
 
-function BulkPreview({ result }) {
+const BULK_EXAMPLE_TEXT = `1. of
+2. which / that
+3. been
+4. at
+5. so
+
+6. She said she would call me back later.
+KEY WORD: PROMISED
+She ______________ me back later.
+Respuesta: promised to call / promised to phone
+Justificación: "promise + to + infinitive".`;
+
+function BulkPreview({ result, kind = "choice" }) {
   const { cfg, sans } = useTheme();
   const { questions, issues, ignored } = result;
   if (!questions.length) {
     return (
       <p style={{ ...sans, color: cfg.colors.error }} className="text-xs">
-        Todavía no se detecta ninguna pregunta. Comprueba que cada pregunta empieza por un número (1. 2. 3.) y que las opciones empiezan
-        por A) B) C) D).
+        {kind === "text"
+          ? "Todavía no se detecta ninguna respuesta. Comprueba que cada línea empieza por un número (1. 2. 3.) seguido de la respuesta."
+          : "Todavía no se detecta ninguna pregunta. Comprueba que cada pregunta empieza por un número (1. 2. 3.) y que las opciones empiezan por A) B) C) D)."}
       </p>
     );
   }
@@ -2251,19 +2743,28 @@ function BulkPreview({ result }) {
                   <span className="line-clamp-2">{q.passage}</span>
                 </div>
               )}
-              <div style={{ color: cfg.colors.ink }} className="font-medium">{i + 1}. {q.question}</div>
-              <ul className="mt-1 space-y-0.5">
-                {q.options.map((o, oi) => {
-                  const isCorrect = !noAnswer && oi === q.correctIndex;
-                  return (
-                    <li key={oi} className="flex items-start gap-1.5" style={{ color: isCorrect ? cfg.colors.success : "#5B6472", fontWeight: isCorrect ? 600 : 400 }}>
-                      <span className="w-4 shrink-0">{OPTION_LETTERS[oi]})</span>
-                      <span>{o}</span>
-                      {isCorrect && <Check size={12} className="mt-0.5 shrink-0" />}
-                    </li>
-                  );
-                })}
-              </ul>
+              <div style={{ color: cfg.colors.ink }} className="font-medium whitespace-pre-line">{i + 1}. {q.question}</div>
+              {q.kind === "text" ? (
+                !noAnswer && (
+                  <div className="mt-1 flex items-start gap-1.5 font-semibold" style={{ color: cfg.colors.success }}>
+                    <Check size={12} className="mt-0.5 shrink-0" />
+                    <span>{q.answers.join("  /  ")}</span>
+                  </div>
+                )
+              ) : (
+                <ul className="mt-1 space-y-0.5">
+                  {q.options.map((o, oi) => {
+                    const isCorrect = !noAnswer && oi === q.correctIndex;
+                    return (
+                      <li key={oi} className="flex items-start gap-1.5" style={{ color: isCorrect ? cfg.colors.success : "#5B6472", fontWeight: isCorrect ? 600 : 400 }}>
+                        <span className="w-4 shrink-0">{OPTION_LETTERS[oi]})</span>
+                        <span>{o}</span>
+                        {isCorrect && <Check size={12} className="mt-0.5 shrink-0" />}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
               {q.explanation && <div className="mt-1 italic" style={{ color: "#5B6472" }}>Justificación: {q.explanation}</div>}
               {problems.map((p) => (
                 <div key={p} className="mt-1 flex items-center gap-1 font-semibold" style={{ color: cfg.colors.error }}>
@@ -2278,9 +2779,116 @@ function BulkPreview({ result }) {
   );
 }
 
+// Admin navigation for Cambridge exercises: exam → part → exercise.
+function CambridgeNav({ exam, partKey, exerciseId, exercises, onOpen }) {
+  const { cfg, sans, serif, trackInfo } = useTheme();
+  const accent = trackInfo("civil").accent;
+  const examDef = CAMBRIDGE_EXAMS[exam];
+  const part = camPartOf(exam, partKey);
+  const civil = exercises.filter((e) => e.track === "civil");
+  const countFor = (level, key) => civil.filter((e) => e.level === level && e.part === key).length;
+  const list = civil
+    .filter((e) => e.level === exam && e.part === partKey)
+    .sort((a, b) => new Date(a.dateAdded) - new Date(b.dateAdded));
+  const pill = (active) => ({
+    ...sans,
+    backgroundColor: active ? cfg.colors.ink : "transparent",
+    color: active ? cfg.colors.bg : cfg.colors.ink,
+    borderColor: active ? cfg.colors.ink : cfg.colors.line,
+  });
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2 flex-wrap">
+        {CAMBRIDGE_LEVELS.map((level) => (
+          <button
+            key={level}
+            type="button"
+            onClick={() => onOpen(level, CAMBRIDGE_EXAMS[level].parts[0].key, "new")}
+            className="px-3 py-1.5 text-sm font-semibold border rounded-sm"
+            style={pill(exam === level)}
+          >
+            {CAMBRIDGE_EXAMS[level].name}
+          </button>
+        ))}
+      </div>
+
+      <div className="space-y-2.5 p-4 border" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
+        {camSections(examDef.parts).map((section) => (
+          <div key={section.key} className="flex items-center gap-3 flex-wrap">
+            <span style={{ ...sans, color: "#5B6472" }} className="text-[11px] font-semibold uppercase tracking-wider w-44 shrink-0">
+              {section.label}
+            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {section.parts.map((p) => {
+                const n = countFor(exam, p.key);
+                return (
+                  <button
+                    key={p.key}
+                    type="button"
+                    onClick={() => onOpen(exam, p.key, "new")}
+                    title={`${p.label} — ${p.title}`}
+                    className="px-2.5 py-1 text-xs font-semibold border rounded-sm flex items-center gap-1.5"
+                    style={pill(partKey === p.key)}
+                  >
+                    {p.label}
+                    <span
+                      className="px-1 rounded-sm text-[10px]"
+                      style={{ backgroundColor: n ? accent : "transparent", color: n ? "#fff" : "#9AA0AA", border: n ? "none" : "1px solid #D5D0C0" }}
+                    >
+                      {n}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {part && (
+        <div>
+          <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-lg font-semibold">
+            {examDef.short} · {part.sectionLabel} · {part.label}
+            <span style={{ color: "#5B6472" }} className="font-normal"> — {part.title}</span>
+          </h4>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-0.5">{CAM_KIND_HINT[part.kind]}</p>
+          <div className="flex items-center gap-1.5 flex-wrap mt-3">
+            {list.map((ex, i) => (
+              <button
+                key={ex.id}
+                type="button"
+                onClick={() => onOpen(exam, partKey, ex.id)}
+                title={ex.title}
+                className="px-3 py-1.5 text-sm border rounded-sm"
+                style={pill(exerciseId === ex.id)}
+              >
+                Ejercicio {i + 1}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => onOpen(exam, partKey, "new")}
+              className="px-3 py-1.5 text-sm font-semibold border border-dashed rounded-sm flex items-center gap-1"
+              style={{ ...sans, borderColor: accent, color: accent, backgroundColor: exerciseId === "new" ? mix(accent, "#ffffff", 0.88) : "transparent" }}
+            >
+              <Plus size={14} /> Nuevo ejercicio
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ContentTab({ exercises, setExercises, track }) {
   const { cfg, sans, trackInfo } = useTheme();
-  const [form, setForm] = useState(emptyForm("grammar", track));
+  // "cambridge": exam → part → exercise tabs (civil). "general": the original form.
+  const [mode, setMode] = useState("cambridge");
+  const [cExam, setCExam] = useState("B2");
+  const [cPartKey, setCPartKey] = useState(CAMBRIDGE_EXAMS.B2.parts[0].key);
+  const [cExerciseId, setCExerciseId] = useState("new");
+  const [form, setForm] = useState(() => blankCambridgeForm("B2", CAMBRIDGE_EXAMS.B2.parts[0], 0));
   const [message, setMessage] = useState("");
   const [filterTrack, setFilterTrack] = useState(track);
   const [bulkText, setBulkText] = useState("");
@@ -2290,6 +2898,41 @@ function ContentTab({ exercises, setExercises, track }) {
   const [questionAudioBusyIndex, setQuestionAudioBusyIndex] = useState(null);
   const [theoryBusy, setTheoryBusy] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const isCam = mode === "cambridge";
+  const partDef = isCam ? camPartOf(cExam, cPartKey) : form.part ? camPartOf(form.level, form.part) : null;
+  const defaultKind = partDef?.kind === "text" ? "text" : "choice";
+
+  function openCambridge(exam, partKey, exerciseId, excludeId) {
+    const p = camPartOf(exam, partKey);
+    if (!p) return;
+    setCExam(exam);
+    setCPartKey(partKey);
+    setCExerciseId(exerciseId);
+    setBulkText("");
+    setBulkMessage("");
+    setBulkOpen(false);
+    const existing = exercises.filter((e) => e.track === "civil" && e.level === exam && e.part === partKey && e.id !== excludeId);
+    if (exerciseId === "new") {
+      setEditingId(null);
+      setForm(blankCambridgeForm(exam, p, existing.length));
+      setMessage("");
+    } else {
+      const ex = exercises.find((e) => e.id === exerciseId);
+      if (ex) startEdit(ex);
+    }
+  }
+
+  function switchMode(next) {
+    setMode(next);
+    setBulkOpen(false);
+    setBulkText("");
+    if (next === "cambridge") openCambridge(cExam, cPartKey, "new");
+    else {
+      setEditingId(null);
+      setForm(emptyForm("grammar", track));
+      setMessage("");
+    }
+  }
 
   function startEdit(ex) {
     setEditingId(ex.id);
@@ -2298,6 +2941,8 @@ function ContentTab({ exercises, setExercises, track }) {
       track: ex.track,
       title: ex.title,
       level: ex.level,
+      part: ex.part || "",
+      durationMinutes: ex.durationMinutes || "",
       instructions: ex.instructions || "",
       passage: ex.passage || "",
       minWords: ex.minWords || 60,
@@ -2374,10 +3019,42 @@ function ContentTab({ exercises, setExercises, track }) {
   function updateOption(qIndex, optIndex, value) {
     setForm((f) => { const questions = [...f.questions]; const options = [...questions[qIndex].options]; options[optIndex] = value; questions[qIndex] = { ...questions[qIndex], options }; return { ...f, questions }; });
   }
-  function addQuestion() { setForm((f) => ({ ...f, questions: [...f.questions, EMPTY_QUESTION()] })); }
+  function addQuestion() { setForm((f) => ({ ...f, questions: [...f.questions, EMPTY_QUESTION(defaultKind)] })); }
   function removeQuestion(qIndex) { setForm((f) => ({ ...f, questions: f.questions.filter((_, i) => i !== qIndex) })); }
+  function addOption(qIndex) {
+    setForm((f) => {
+      const questions = [...f.questions];
+      const q = questions[qIndex];
+      if (q.options.length >= OPTION_LETTERS.length) return f;
+      questions[qIndex] = { ...q, options: [...q.options, ""] };
+      return { ...f, questions };
+    });
+  }
+  function removeLastOption(qIndex) {
+    setForm((f) => {
+      const questions = [...f.questions];
+      const q = questions[qIndex];
+      if (q.options.length <= 2) return f;
+      const options = q.options.slice(0, -1);
+      questions[qIndex] = { ...q, options, correctIndex: Math.min(q.correctIndex, options.length - 1) };
+      return { ...f, questions };
+    });
+  }
+  function changeQuestionKind(qIndex, kind) {
+    setForm((f) => {
+      const questions = [...f.questions];
+      const q = questions[qIndex];
+      if ((q.kind || "choice") === kind) return f;
+      questions[qIndex] =
+        kind === "text"
+          ? { ...q, kind: "text", answers: q.answers || [], options: [] }
+          : { ...q, kind: undefined, options: q.options?.length ? q.options : ["", "", "", ""] };
+      return { ...f, questions };
+    });
+  }
 
-  const bulkResult = useMemo(() => (bulkText.trim() ? parseBulk(bulkText, form.type) : null), [bulkText, form.type]);
+  const bulkKind = defaultKind;
+  const bulkResult = useMemo(() => (bulkText.trim() ? parseBulk(bulkText, form.type, bulkKind) : null), [bulkText, form.type, bulkKind]);
 
   function applyBulk(replace) {
     const parsed = bulkResult?.questions || [];
@@ -2386,7 +3063,7 @@ function ContentTab({ exercises, setExercises, track }) {
       return;
     }
     setForm((f) => {
-      const base = replace ? [] : f.questions.filter((q) => q.question.trim() || q.options.some((o) => o.trim()));
+      const base = replace ? [] : f.questions.filter((q) => q.question.trim() || q.options.some((o) => o.trim()) || (q.answers || []).some((a) => a.trim()));
       return { ...f, questions: [...base, ...parsed] };
     });
     setBulkMessage(`Se han añadido ${parsed.length} preguntas. Revísalas más abajo antes de publicar.`);
@@ -2402,34 +3079,48 @@ function ContentTab({ exercises, setExercises, track }) {
     }
     const exerciseData = {
       type: form.type, track: form.track, title: form.title.trim(), level: form.level,
+      part: form.part, durationMinutes: form.type === "writing" ? null : form.durationMinutes,
       instructions: form.instructions.trim(), passage: form.passage.trim(),
       minWords: form.type === "writing" ? Number(form.minWords) || 0 : null,
       audioUrl: form.type === "listening" ? form.audioUrl : "",
       theoryFileUrl: form.type === "grammar" ? form.theoryFileUrl : "",
       theoryFileName: form.type === "grammar" ? form.theoryFileName : "",
-      questions: form.type === "writing" ? [] : form.questions.filter((q) => q.question.trim() && q.options.every((o) => o.trim())).map((q) => ({ ...q })),
+      questions: form.type === "writing" ? [] : form.questions.filter(isQuestionComplete).map(cleanQuestion),
     };
+    let saved = null;
+    let okMessage = "";
     try {
       if (editingId) {
-        const updated = await api.updateExercise(editingId, exerciseData);
-        setExercises((prev) => prev.map((ex) => (ex.id === editingId ? updated : ex)));
-        setMessage("Cambios guardados.");
+        saved = await api.updateExercise(editingId, exerciseData);
+        setExercises((prev) => prev.map((ex) => (ex.id === editingId ? saved : ex)));
+        okMessage = "Cambios guardados.";
       } else {
-        const created = await api.insertExercise(exerciseData);
-        setExercises((prev) => [created, ...prev].sort((a, b) => a.sortOrder - b.sortOrder));
-        setMessage("Publicado correctamente.");
+        saved = await api.insertExercise(exerciseData);
+        setExercises((prev) => [saved, ...prev].sort((a, b) => a.sortOrder - b.sortOrder));
+        okMessage = "Publicado correctamente.";
       }
     } catch {
-      setMessage("No se pudo guardar. Inténtalo de nuevo.");
+      setMessage("No se pudo guardar. Inténtalo de nuevo. (Si es un ejercicio de Cambridge y es la primera vez, comprueba que has ejecutado el SQL de las columnas nuevas.)");
+      return;
     }
+    if (isCam) {
+      // Stay on the saved exercise so the next one is just a click away.
+      setCExerciseId(saved.id);
+      startEdit(saved);
+      setMessage(okMessage);
+      return;
+    }
+    setMessage(okMessage);
     setEditingId(null);
     setForm(emptyForm(form.type, form.track));
   }
   async function handleDelete(id) {
+    if (isCam && !window.confirm("¿Eliminar este ejercicio? No se puede deshacer.")) return;
     try {
       await api.deleteExercise(id);
       setExercises((prev) => prev.filter((e) => e.id !== id));
-      if (editingId === id) cancelEdit();
+      if (isCam) openCambridge(cExam, cPartKey, "new", id);
+      else if (editingId === id) cancelEdit();
     } catch {
       setMessage("No se pudo eliminar. Inténtalo de nuevo.");
     }
@@ -2454,18 +3145,46 @@ function ContentTab({ exercises, setExercises, track }) {
     }
   }
 
-  const needsPassage = form.type === "reading" || form.type === "listening";
+  const needsPassage = form.type === "reading" || form.type === "listening" || (!!form.part && form.type === "grammar");
   const needsQuestions = form.type !== "writing";
   const [filterType, setFilterType] = useState("grammar");
   const filteredList = exercises.filter((e) => e.track === filterTrack && e.type === filterType);
 
   return (
-    <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10">
+    <div className="space-y-6">
+      <div className="flex items-center gap-1 border-b" style={{ borderColor: cfg.colors.line }}>
+        {[["cambridge", "Cambridge (área civil)"], ["general", "Otros ejercicios (militar y resto)"]].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => switchMode(key)}
+            className="px-3 py-2 text-sm font-medium border-b-2 -mb-px"
+            style={{ ...sans, borderColor: mode === key ? cfg.colors.ink : "transparent", color: mode === key ? cfg.colors.ink : "#5B6472" }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {isCam && (
+        <CambridgeNav
+          exam={cExam}
+          partKey={cPartKey}
+          exerciseId={cExerciseId}
+          exercises={exercises}
+          onOpen={openCambridge}
+        />
+      )}
+
+    <div className={isCam ? "max-w-3xl" : "grid lg:grid-cols-[1.1fr_0.9fr] gap-10"}>
       <div>
-        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-6">
-          Publica un ejercicio nuevo para el área civil o para el área militar. Aparece de inmediato en esa sección.
-        </p>
+        {!isCam && (
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-6">
+            Publica un ejercicio nuevo para el área civil o para el área militar. Aparece de inmediato en esa sección.
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-5">
+          {!isCam && (
           <div className="grid sm:grid-cols-3 gap-3">
             <label className="text-sm" style={sans}>
               Área
@@ -2494,11 +3213,27 @@ function ContentTab({ exercises, setExercises, track }) {
               </select>
             </label>
           </div>
+          )}
 
           <label className="text-sm block" style={sans}>
             Título
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder="Ej. Reported Speech in Emails" />
           </label>
+
+          {isCam && form.type !== "writing" && (
+            <label className="text-sm block max-w-[260px]" style={sans}>
+              Tiempo límite en minutos (opcional)
+              <input
+                type="number"
+                min={1}
+                value={form.durationMinutes}
+                onChange={(e) => updateField("durationMinutes", e.target.value)}
+                placeholder="Sin cronómetro"
+                className="mt-1 w-full border px-3 py-2"
+                style={{ borderColor: cfg.colors.line }}
+              />
+            </label>
+          )}
 
           {form.type === "grammar" && (
             <div className="text-sm" style={sans}>
@@ -2566,8 +3301,18 @@ function ContentTab({ exercises, setExercises, track }) {
 
           {needsPassage && (
             <label className="text-sm block" style={sans}>
-              {form.type === "listening" ? "Guion / transcripción" : "Texto de lectura"}
-              <textarea value={form.passage} onChange={(e) => updateField("passage", e.target.value)} rows={4} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+              {form.type === "listening"
+                ? `Guion / transcripción${isCam ? " (el alumno solo lo ve al corregir)" : ""}`
+                : form.type === "grammar"
+                ? "Texto del ejercicio (con los huecos numerados, opcional)"
+                : "Texto de lectura"}
+              <textarea
+                value={form.passage}
+                onChange={(e) => updateField("passage", e.target.value)}
+                rows={isCam ? 8 : 4}
+                className="mt-1 w-full border px-3 py-2"
+                style={{ borderColor: cfg.colors.line }}
+              />
             </label>
           )}
 
@@ -2604,9 +3349,24 @@ function ContentTab({ exercises, setExercises, track }) {
                     Pega el contenido tal como lo tengas (desde Word, un PDF, ChatGPT…) y abajo verás al momento qué se ha detectado.
                     Se reconoce solo:
                   </p>
+                  {bulkKind === "text" ? (
+                    <ul style={{ ...sans, color: "#5B6472" }} className="text-xs leading-relaxed list-disc pl-5 space-y-0.5">
+                      <li>
+                        <strong>Solo la clave de respuestas</strong> (lo más rápido para Open cloze, Word formation, Gap fill…): una línea por
+                        hueco, <code>1. of</code> <code>2. which / that</code>. Las alternativas aceptadas se separan con <code>/</code>.
+                        El texto con los huecos lo pegas arriba, en "Texto del ejercicio".
+                      </li>
+                      <li>
+                        <strong>Ejercicios completos</strong> (Key word transformation): <code>1.</code> seguido de la frase, la palabra clave y
+                        la frase a completar (en varias líneas), y debajo <code>Respuesta: had been waiting / 'd been waiting</code>.
+                      </li>
+                      <li>Justificación (opcional): una línea <code>Justificación: …</code></li>
+                      <li>Mayúsculas, espacios de más y el punto final no importan al corregir; los apóstrofos curvos valen igual.</li>
+                    </ul>
+                  ) : (
                   <ul style={{ ...sans, color: "#5B6472" }} className="text-xs leading-relaxed list-disc pl-5 space-y-0.5">
                     <li>Preguntas numeradas: <code>1.</code> <code>2)</code> <code>Pregunta 3:</code></li>
-                    <li>Opciones con letra: <code>A)</code> <code>B.</code> <code>c)</code> (de 2 a 6 opciones)</li>
+                    <li>Opciones con letra: <code>A)</code> <code>B.</code> <code>c)</code> (de 2 a 8 opciones)</li>
                     <li>Respuesta correcta: un <code>*</code> al final de la opción, o una línea <code>Respuesta: B</code></li>
                     <li>Justificación (opcional): una línea <code>Justificación: …</code> debajo de las opciones</li>
                     {form.type === "reading" && (
@@ -2622,10 +3382,11 @@ function ContentTab({ exercises, setExercises, track }) {
                       </li>
                     )}
                   </ul>
+                  )}
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => setBulkText(form.type === "reading" ? BULK_EXAMPLE_READING : BULK_EXAMPLE_GENERIC)}
+                      onClick={() => setBulkText(bulkKind === "text" ? BULK_EXAMPLE_TEXT : form.type === "reading" ? BULK_EXAMPLE_READING : BULK_EXAMPLE_GENERIC)}
                       className="text-xs underline"
                       style={{ ...sans, color: "#5B6472" }}
                     >
@@ -2640,7 +3401,7 @@ function ContentTab({ exercises, setExercises, track }) {
                     className="w-full border px-3 py-2 text-sm font-mono"
                     style={{ borderColor: cfg.colors.line }}
                   />
-                  {bulkResult && <BulkPreview result={bulkResult} />}
+                  {bulkResult && <BulkPreview result={bulkResult} kind={bulkKind} />}
                   <div className="flex items-center gap-3">
                     <button type="button" onClick={() => applyBulk(false)} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
                       Añadir estas preguntas
@@ -2697,20 +3458,73 @@ function ContentTab({ exercises, setExercises, track }) {
                       </div>
                     </div>
                   )}
-                  <div className="flex items-center justify-between gap-2">
-                    <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1}`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
+                  {form.part && (
+                    <div className="flex items-center gap-2 text-xs" style={sans}>
+                      <span style={{ color: "#5B6472" }}>Tipo:</span>
+                      <select
+                        value={q.kind === "text" ? "text" : "choice"}
+                        onChange={(e) => changeQuestionKind(qi, e.target.value)}
+                        className="border px-2 py-1 text-xs"
+                        style={{ borderColor: cfg.colors.line }}
+                      >
+                        <option value="choice">Elegir opción</option>
+                        <option value="text">Escribir la respuesta</option>
+                      </select>
+                    </div>
+                  )}
+                  <div className="flex items-start justify-between gap-2">
+                    {q.kind === "text" ? (
+                      <textarea
+                        value={q.question}
+                        onChange={(e) => updateQuestion(qi, "question", e.target.value)}
+                        placeholder={`Enunciado ${qi + 1} (opcional si es un hueco de un texto; en varias líneas si hace falta)`}
+                        rows={2}
+                        className="flex-1 border px-3 py-2 text-sm"
+                        style={{ borderColor: cfg.colors.line }}
+                      />
+                    ) : (
+                      <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1}`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
+                    )}
                     {form.questions.length > 1 && (
-                      <button type="button" onClick={() => removeQuestion(qi)} style={{ color: cfg.colors.error }}><Trash2 size={16} /></button>
+                      <button type="button" onClick={() => removeQuestion(qi)} style={{ color: cfg.colors.error }} className="mt-2"><Trash2 size={16} /></button>
                     )}
                   </div>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {q.options.map((opt, oi) => (
-                      <label key={oi} className="flex items-center gap-2 text-xs" style={sans}>
-                        <input type="radio" name={`correct-${q.id}`} checked={q.correctIndex === oi} onChange={() => updateQuestion(qi, "correctIndex", oi)} />
-                        <input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Opción ${oi + 1}`} className="flex-1 border px-2 py-1.5" style={{ borderColor: cfg.colors.line }} />
-                      </label>
-                    ))}
-                  </div>
+                  {q.kind === "text" ? (
+                    <label className="text-xs block" style={sans}>
+                      Respuesta(s) correcta(s) — separa las alternativas con /
+                      <input
+                        value={q.answersRaw ?? (q.answers || []).join(" / ")}
+                        onChange={(e) => setForm((f) => {
+                          const questions = [...f.questions];
+                          questions[qi] = { ...questions[qi], answersRaw: e.target.value, answers: splitAnswers(e.target.value) };
+                          return { ...f, questions };
+                        })}
+                        placeholder="Ej. which / that"
+                        className="mt-1 w-full border px-3 py-2 text-sm"
+                        style={{ borderColor: cfg.colors.success }}
+                      />
+                    </label>
+                  ) : (
+                    <>
+                      <div className="grid sm:grid-cols-2 gap-2">
+                        {q.options.map((opt, oi) => (
+                          <label key={oi} className="flex items-center gap-2 text-xs" style={sans}>
+                            <input type="radio" name={`correct-${q.id}`} checked={q.correctIndex === oi} onChange={() => updateQuestion(qi, "correctIndex", oi)} />
+                            <span className="w-3 font-semibold" style={{ color: "#5B6472" }}>{OPTION_LETTERS[oi]}</span>
+                            <input value={opt} onChange={(e) => updateOption(qi, oi, e.target.value)} placeholder={`Opción ${oi + 1}`} className="flex-1 border px-2 py-1.5" style={{ borderColor: cfg.colors.line }} />
+                          </label>
+                        ))}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs" style={sans}>
+                        {q.options.length < OPTION_LETTERS.length && (
+                          <button type="button" onClick={() => addOption(qi)} className="underline" style={{ color: "#5B6472" }}>+ Añadir opción</button>
+                        )}
+                        {q.options.length > 2 && (
+                          <button type="button" onClick={() => removeLastOption(qi)} className="underline" style={{ color: "#5B6472" }}>− Quitar la última</button>
+                        )}
+                      </div>
+                    </>
+                  )}
                   <label className="text-xs block" style={sans}>
                     Justificación de la respuesta (opcional — puedes citar el fragmento del texto/audio original)
                     <textarea
@@ -2731,9 +3545,14 @@ function ContentTab({ exercises, setExercises, track }) {
             <button type="submit" className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
               {editingId ? "Guardar cambios" : "Publicar ejercicio"}
             </button>
-            {editingId && (
+            {editingId && !isCam && (
               <button type="button" onClick={cancelEdit} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
                 Cancelar edición
+              </button>
+            )}
+            {editingId && isCam && (
+              <button type="button" onClick={() => handleDelete(editingId)} className="text-xs underline" style={{ ...sans, color: cfg.colors.error }}>
+                Eliminar este ejercicio
               </button>
             )}
             {message && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{message}</span>}
@@ -2741,6 +3560,7 @@ function ContentTab({ exercises, setExercises, track }) {
         </form>
       </div>
 
+      {!isCam && (
       <div>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">
@@ -2798,6 +3618,8 @@ function ContentTab({ exercises, setExercises, track }) {
           )}
         </ul>
       </div>
+      )}
+    </div>
     </div>
   );
 }
@@ -4780,6 +5602,7 @@ export default function App() {
   // out the exam the student is in the middle of.
   const randomCategoryExerciseId = useMemo(() => {
     if (view.name !== "listening" && view.name !== "reading") return null;
+    if (track === "civil") return null; // civil uses the Cambridge part → exercise navigation
     const pool = (exercises || []).filter((e) => e.type === view.name && e.track === track && matchesLevel(e.level, currentUser?.level));
     if (!pool.length) return null;
     return pool[Math.floor(Math.random() * pool.length)].id;
@@ -4816,7 +5639,7 @@ export default function App() {
       ) : (
         <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
       );
-  } else if (view.name === "listening" || view.name === "reading") {
+  } else if (track !== "civil" && (view.name === "listening" || view.name === "reading")) {
     const exercise = randomCategoryExerciseId ? exercises.find((e) => e.id === randomCategoryExerciseId) : null;
     const priorSubmission = currentUser && exercise ? submissions.find((s) => s.userId === currentUser.id && s.exerciseId === exercise.id) : null;
     content = exercise ? (
@@ -4835,7 +5658,22 @@ export default function App() {
       </div>
     );
   } else if (CATEGORY_KEYS.includes(view.name)) {
-    content = <CategoryList type={view.name} exercises={exercises} materials={materials} setView={setView} focusId={view.focusId} track={track} submissions={submissions} currentUser={currentUser} />;
+    content =
+      track === "civil" ? (
+        <CambridgeCategory
+          key={view.name}
+          type={view.name}
+          exercises={exercises}
+          materials={materials}
+          setView={setView}
+          initialPart={view.part}
+          track={track}
+          submissions={submissions}
+          currentUser={currentUser}
+        />
+      ) : (
+        <CategoryList type={view.name} exercises={exercises} materials={materials} setView={setView} focusId={view.focusId} track={track} submissions={submissions} currentUser={currentUser} />
+      );
   } else if (view.name === "detail") {
     const exercise = exercises.find((e) => e.id === view.id);
     const priorSubmission = currentUser
