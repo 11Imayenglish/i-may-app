@@ -1330,7 +1330,8 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
         </div>
       )}
       <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3 whitespace-pre-line">
-        {index + 1}. {q.question}
+        {/* An empty statement (or one that is just a number) shows only the question number. */}
+        {index + 1}.{q.question && !/^\d+[.)]?$/.test(q.question.trim()) ? ` ${q.question}` : ""}
       </p>
       {q.kind === "text" ? (
         <div>
@@ -2322,7 +2323,7 @@ function cleanQuestion(q) {
 }
 
 function isQuestionComplete(q) {
-  return q.kind === "text" ? (q.answers || []).some((a) => a.trim()) : q.question.trim() && q.options.every((o) => o.trim());
+  return q.kind === "text" ? (q.answers || []).some((a) => a.trim()) : q.options.every((o) => o.trim());
 }
 
 // Old format: one block per question separated by blank lines, first line is
@@ -2516,6 +2517,11 @@ function parseStructuredBulk(text, type) {
     const qm = s.match(RE_QUESTION);
     if (qm) {
       startQuestion(qm[2]);
+      continue;
+    }
+    // A bare number ("1." / "2)") right above the options: the statement is just the question number.
+    if (/^\d{1,3}\s*[.)\-:–]?$/.test(s) && nextIsFirstOption(i)) {
+      startQuestion("");
       continue;
     }
 
@@ -3659,7 +3665,7 @@ function ContentTab({ exercises, setExercises, track }) {
                         style={{ borderColor: cfg.colors.line }}
                       />
                     ) : (
-                      <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1}`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
+                      <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1} (déjalo vacío para que solo salga el número)`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
                     )}
                     {form.questions.length > 1 && (
                       <button type="button" onClick={() => removeQuestion(qi)} style={{ color: cfg.colors.error }} className="mt-2"><Trash2 size={16} /></button>
