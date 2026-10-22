@@ -1270,7 +1270,7 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
                           {e.title ? <span style={{ color: "#5B6472" }} className="font-normal"> · {e.title}</span> : null}
                         </div>
                         <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-2 mt-1 flex-wrap">
-                          {e.questions?.length > 0 && <span>{e.questions.length} preguntas</span>}
+                          {realQuestions(e.questions).length > 0 && <span>{realQuestions(e.questions).length} preguntas</span>}
                           {e.durationMinutes > 0 && (
                             <span className="flex items-center gap-1"><Clock size={12} /> {e.durationMinutes} min</span>
                           )}
@@ -1402,6 +1402,32 @@ function formatCountdown(totalSeconds) {
   return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
 }
 
+// Cambridge "question 0": a solved example stored first in the questions list
+// with example: true. It is shown to the student but never counted or graded.
+const isExampleQ = (q) => !!q?.example;
+const realQuestions = (qs) => (qs || []).filter((q) => !isExampleQ(q));
+
+function ExampleBlock({ q }) {
+  const { colors, sans } = useTheme();
+  return (
+    <div className="mb-6 p-4 border" style={{ borderColor: colors.success, backgroundColor: mix(colors.success, "#ffffff", 0.94) }}>
+      <div style={{ ...sans, color: colors.success }} className="text-[11px] font-semibold uppercase tracking-widest mb-2">
+        Ejemplo (0)
+      </div>
+      {q.question && (
+        <p style={{ ...sans, color: colors.ink }} className="font-medium whitespace-pre-line">
+          0. {q.question}
+        </p>
+      )}
+      {q.answer && (
+        <p style={{ ...sans, color: colors.success }} className="text-sm mt-2">
+          Respuesta: <strong>{q.answer}</strong>
+        </p>
+      )}
+    </div>
+  );
+}
+
 function shuffleArray(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -1443,7 +1469,8 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
   const [finished, setFinished] = useState(!examMode);
   const [secondsLeft, setSecondsLeft] = useState(timerSeconds);
   const [attempt, setAttempt] = useState(0);
-  const [displayQuestions, setDisplayQuestions] = useState(exercise.questions || []);
+  const exampleQ = (exercise.questions || []).find(isExampleQ);
+  const [displayQuestions, setDisplayQuestions] = useState(realQuestions(exercise.questions));
   const submittedRef = useRef(false);
 
   useEffect(() => {
@@ -1455,7 +1482,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
     // Legacy Listening/Reading exams get a fresh question order every time, so
     // getting the same exam twice doesn't mean the same 30 questions in the
     // same sequence.
-    setDisplayQuestions(legacyExam ? shuffleGrouped(exercise.questions || []) : (exercise.questions || []));
+    setDisplayQuestions(legacyExam ? shuffleGrouped(realQuestions(exercise.questions)) : realQuestions(exercise.questions));
   }, [exercise.id, currentUser, examMode, legacyExam, timerSeconds, attempt]);
 
   const handleAnswer = useCallback((qId, value) => setAnswers((prev) => ({ ...prev, [qId]: value })), []);
@@ -1682,6 +1709,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </div>
       ) : (
         <div>
+          {exampleQ && <ExampleBlock q={exampleQ} />}
           {displayQuestions.map((q, i) => (
             <QuestionBlock
               key={q.id}
@@ -2270,7 +2298,7 @@ const EMPTY_QUESTION = (kind = "choice") =>
     ? { id: uid(), kind: "text", question: "", options: [], correctIndex: 0, answers: [], explanation: "", passage: "", audioUrl: "" }
     : { id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "", audioUrl: "" };
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", icon: "", questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", icon: "", example: { question: "", answer: "" }, questions: [EMPTY_QUESTION()] };
 }
 
 function blankCambridgeForm(level, part, existingCount) {
@@ -2938,7 +2966,7 @@ function CambridgeExerciseList({ exam, exercises, selectedId, onOpen, onEditOthe
           )}
         </div>
         <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
-          {e.type === "writing" ? "Redacción" : `${e.questions?.length || 0} preguntas`}
+          {e.type === "writing" ? "Redacción" : `${realQuestions(e.questions).length} preguntas`}
           {e.durationMinutes ? ` · ${e.durationMinutes} min` : ""} · {formatDate(e.dateAdded)}
           {hint ? ` · ${hint}` : ""}
         </div>
@@ -3055,7 +3083,8 @@ function ContentTab({ exercises, setExercises, track }) {
       audioUrl: ex.audioUrl || "",
       theoryFileUrl: ex.theoryFileUrl || "",
       theoryFileName: ex.theoryFileName || "",
-      questions: ex.questions?.length ? ex.questions.map((q) => ({ ...q })) : [EMPTY_QUESTION()],
+      example: (() => { const x = (ex.questions || []).find(isExampleQ); return { question: x?.question || "", answer: x?.answer || "" }; })(),
+      questions: realQuestions(ex.questions).length ? realQuestions(ex.questions).map((q) => ({ ...q })) : [EMPTY_QUESTION()],
     });
     setMessage("");
   }
@@ -3194,6 +3223,13 @@ function ContentTab({ exercises, setExercises, track }) {
       theoryFileName: form.type === "grammar" ? form.theoryFileName : "",
       questions: form.type === "writing" ? [] : form.questions.filter(isQuestionComplete).map(cleanQuestion),
     };
+    // Question 0 (Cambridge example): only saved when the teacher fills it in.
+    if (isCam && form.type !== "writing" && (form.example?.question.trim() || form.example?.answer.trim())) {
+      exerciseData.questions = [
+        { id: uid(), example: true, question: form.example.question.trim(), answer: form.example.answer.trim() },
+        ...exerciseData.questions,
+      ];
+    }
     let saved = null;
     let okMessage = "";
     try {
@@ -3437,6 +3473,36 @@ function ContentTab({ exercises, setExercises, track }) {
                 <input type="number" min={0} value={form.minWords} onChange={(e) => updateField("minWords", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
               </label>
             </>
+          )}
+
+          {isCam && needsQuestions && (
+            <div className="p-4 border space-y-2" style={{ borderColor: cfg.colors.line, backgroundColor: mix(cfg.colors.success, "#ffffff", 0.94) }}>
+              <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Pregunta 0 — Ejemplo (opcional)</span>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
+                El alumno la ve resuelta antes de la pregunta 1 y no cuenta en la nota. Si la dejas vacía, el ejercicio empieza directamente en la pregunta 1.
+              </p>
+              <label className="text-xs block" style={sans}>
+                Enunciado del ejemplo (puedes incluir las opciones)
+                <textarea
+                  value={form.example?.question || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, example: { ...f.example, question: e.target.value } }))}
+                  rows={3}
+                  placeholder="Ej. 0  The weather was ______ yesterday.  A) terrible  B) terribly  C) terror"
+                  className="mt-1 w-full border px-3 py-2 text-sm"
+                  style={{ borderColor: cfg.colors.line }}
+                />
+              </label>
+              <label className="text-xs block" style={sans}>
+                Respuesta del ejemplo
+                <input
+                  value={form.example?.answer || ""}
+                  onChange={(e) => setForm((f) => ({ ...f, example: { ...f.example, answer: e.target.value } }))}
+                  placeholder="Ej. A"
+                  className="mt-1 w-full border px-3 py-2 text-sm"
+                  style={{ borderColor: cfg.colors.line }}
+                />
+              </label>
+            </div>
           )}
 
           {needsQuestions && (
