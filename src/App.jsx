@@ -291,6 +291,11 @@ const CAM_KIND_HINT = {
   none: "Enunciado de la redacción · el alumno la entrega como indiques",
 };
 
+// "B2" → "B2 · FCE" for the Cambridge levels; other levels (A2, SLP…) stay as they are.
+function levelChipLabel(level) {
+  return CAMBRIDGE_EXAMS[level] ? `${level} · ${CAMBRIDGE_EXAMS[level].short}` : level;
+}
+
 function camPartOf(level, key) {
   return CAMBRIDGE_EXAMS[level]?.parts.find((p) => p.key === key) || null;
 }
@@ -984,6 +989,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
                         <div className="flex items-center justify-between gap-2">
                           <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                             <BookOpen size={14} style={{ color: t.accent }} /> {m.title}
+                            {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                           </span>
                           <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
                         </div>
@@ -997,6 +1003,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
                       <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
                         <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                           <FileText size={14} style={{ color: t.accent }} /> {m.title}
+                          {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                         </span>
                         <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
                       </a>
@@ -1171,8 +1178,6 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
         </div>
       )}
 
-      <MaterialsSection materials={materials} type={type} track={track} userLevel={userLevel} />
-
       {hasExam && (
         <div className="flex items-center gap-2 flex-wrap mb-5">
           {fixedExam ? (
@@ -1186,6 +1191,9 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
           )}
         </div>
       )}
+
+      {/* Theory follows the selected exam: B2 theory only shows under FCE, etc. */}
+      <MaterialsSection materials={materials} type={type} track={track} userLevel={hasExam ? exam : userLevel} />
 
       {parts.length === 0 && others.length === 0 ? (
         <p style={{ ...sans, color: "#5B6472" }}>
@@ -5226,7 +5234,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
               Nivel
               <select value={form.level} onChange={(e) => updateField("level", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
                 <option value="">Todos los niveles</option>
-                {LEVELS_BY_TRACK[form.track].map((l) => <option key={l} value={l}>{l}</option>)}
+                {LEVELS_BY_TRACK[form.track].map((l) => <option key={l} value={l}>{levelChipLabel(l)}</option>)}
               </select>
             </label>
           </div>
@@ -5283,7 +5291,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
               <div className="min-w-0">
                 <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{m.title}</div>
                 <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
-                  {cfg.categoryLabels[m.category]} · {m.kind === "theory" ? "Teoría" : "Descarga"} · {m.level || "Todos los niveles"} · {formatDate(m.dateAdded)}
+                  {cfg.categoryLabels[m.category]} · {m.kind === "theory" ? "Teoría" : "Descarga"} · {m.level ? levelChipLabel(m.level) : "Todos los niveles"} · {formatDate(m.dateAdded)}
                 </div>
               </div>
               <button onClick={() => handleDelete(m.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
