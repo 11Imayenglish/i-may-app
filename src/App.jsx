@@ -5147,20 +5147,59 @@ function ReviewsTab({ reviews, setReviews }) {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Admin — tab: Recursos (teoría y documentos descargables)            */
+/*  Admin — tab: Teoría (explicaciones y documentos descargables)       */
 /* ------------------------------------------------------------------ */
-function emptyMaterialForm(track = "civil") {
-  return { track, category: "grammar", kind: "theory", title: "", body: "", fileUrl: "", fileName: "", level: "" };
+function emptyMaterialForm(track = "civil", level = "", category = "grammar") {
+  return { track, category, kind: "theory", title: "", body: "", fileUrl: "", fileName: "", level };
 }
 
 function MaterialsTab({ materials, setMaterials, track }) {
   const { cfg, sans, trackInfo } = useTheme();
-  const [form, setForm] = useState(emptyMaterialForm(track));
+  const [form, setForm] = useState(emptyMaterialForm(track, LEVELS_BY_TRACK[track].includes("B2") ? "B2" : LEVELS_BY_TRACK[track][0]));
+  const [editingId, setEditingId] = useState(null);
   const [message, setMessage] = useState("");
-  const [filterTrack, setFilterTrack] = useState(track);
+  const [fileBusy, setFileBusy] = useState(false);
+
+  // The pills (área, nivel, categoría) choose both what the list shows and where the next item is published.
+  const pill = (active) => ({
+    ...sans,
+    backgroundColor: active ? cfg.colors.ink : cfg.colors.card,
+    color: active ? cfg.colors.bg : cfg.colors.ink,
+    borderColor: active ? cfg.colors.ink : cfg.colors.line,
+  });
 
   function updateField(field, value) {
     setForm((f) => ({ ...f, [field]: value }));
+  }
+
+  function newItem(patch = {}) {
+    setEditingId(null);
+    setMessage("");
+    setForm((f) => ({ ...emptyMaterialForm(f.track, f.level, f.category), ...patch }));
+  }
+
+  function pickTrack(key) {
+    newItem({ track: key, level: LEVELS_BY_TRACK[key].includes("B2") ? "B2" : LEVELS_BY_TRACK[key][0] });
+  }
+
+  function startEdit(m) {
+    setEditingId(m.id);
+    setMessage("");
+    setForm({ track: m.track, category: m.category, kind: m.kind, title: m.title, body: m.body, fileUrl: m.fileUrl, fileName: m.fileName, level: m.level });
+  }
+
+  async function handleUploadFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileBusy(true);
+    try {
+      const url = await api.uploadFile(file, "materials");
+      setForm((f) => ({ ...f, fileUrl: url, fileName: file.name, title: f.title || file.name.replace(/\.[^.]+$/, "") }));
+    } catch {
+      setMessage("No se pudo subir el documento. Inténtalo de nuevo.");
+    }
+    setFileBusy(false);
+    e.target.value = "";
   }
 
   async function handleSubmit(e) {
@@ -5174,154 +5213,174 @@ function MaterialsTab({ materials, setMaterials, track }) {
       return;
     }
     if (form.kind === "file" && !form.fileUrl.trim()) {
-      setMessage("Pega el enlace o el base64 del documento.");
+      setMessage("Sube el documento.");
       return;
     }
-    const newMaterial = {
+    const item = {
       track: form.track,
       category: form.category,
       kind: form.kind,
       title: form.title.trim(),
-      body: form.body.trim(),
-      fileUrl: form.fileUrl.trim(),
-      fileName: form.fileName.trim(),
+      body: form.kind === "theory" ? form.body.trim() : "",
+      fileUrl: form.kind === "file" ? form.fileUrl.trim() : "",
+      fileName: form.kind === "file" ? form.fileName.trim() : "",
       level: form.level,
     };
     try {
-      const created = await api.insertMaterial(newMaterial);
-      setMaterials((prev) => [created, ...prev]);
-      setMessage("Publicado correctamente.");
+      if (editingId) {
+        const saved = await api.updateMaterial(editingId, item);
+        setMaterials((prev) => prev.map((m) => (m.id === editingId ? saved : m)));
+        setEditingId(null);
+        setMessage("Cambios guardados.");
+      } else {
+        const created = await api.insertMaterial(item);
+        setMaterials((prev) => [created, ...prev]);
+        setMessage("Publicado correctamente.");
+      }
+      setForm(emptyMaterialForm(form.track, form.level, form.category));
     } catch {
       setMessage("No se pudo guardar. Inténtalo de nuevo.");
     }
-    setForm(emptyMaterialForm(form.track));
   }
 
-  async function handleDelete(id) {
+  async function handleDelete(m) {
+    if (!window.confirm(`¿Eliminar "${m.title}"?`)) return;
     try {
-      await api.deleteMaterial(id);
-      setMaterials((prev) => prev.filter((m) => m.id !== id));
+      await api.deleteMaterial(m.id);
+      setMaterials((prev) => prev.filter((x) => x.id !== m.id));
+      if (editingId === m.id) newItem();
     } catch {
       setMessage("No se pudo eliminar. Inténtalo de nuevo.");
     }
   }
 
-  const filteredList = materials.filter((m) => m.track === filterTrack);
+  const inTrack = materials.filter((m) => m.track === form.track);
+  const list = inTrack
+    .filter((m) => m.level === form.level && m.category === form.category)
+    .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded));
+  const levelCount = (l) => inTrack.filter((m) => m.level === l).length;
+  const categoryCount = (c) => inTrack.filter((m) => m.level === form.level && m.category === c).length;
+  const levelOptions = ["", ...LEVELS_BY_TRACK[form.track]];
 
   return (
-    <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10">
-      <div>
-        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-2">
-          Añade explicaciones teóricas o documentos descargables (Word, PDF, lo que sea) a la sección de cada categoría. Los alumnos los
-          verán al entrar en Gramática, Listening, Reading o Writing, antes de la lista de ejercicios.
-        </p>
-        <p style={{ ...sans, color: "#5B6472" }} className="text-xs mb-6 flex items-start gap-1.5">
-          <FileText size={13} className="mt-0.5 shrink-0" />
-          Para documentos: como esta plantilla no permite subir archivos directamente, pega un enlace a un archivo ya alojado en algún
-          sitio, o el propio archivo convertido a base64 (igual que con las imágenes). El alumno lo descarga con un clic.
-        </p>
+    <div>
+      <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-5">
+        Sube aquí la teoría (explicaciones escritas o documentos Word/PDF). Elige el nivel y la categoría arriba: los alumnos la verán en la
+        pestaña <strong>Teoría</strong> de esa categoría, solo dentro de su examen.
+      </p>
+
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        {["civil", "military"].map((key) => (
+          <button key={key} onClick={() => pickTrack(key)} className="px-3 py-1.5 text-xs font-semibold border rounded-sm" style={pill(form.track === key)}>
+            {trackInfo(key).label}
+          </button>
+        ))}
+        <span className="w-px h-5 mx-1" style={{ backgroundColor: cfg.colors.line }} />
+        {levelOptions.map((l) => (
+          <button key={l || "all"} onClick={() => newItem({ level: l })} className="px-3 py-1.5 text-sm font-semibold border rounded-sm flex items-center gap-2" style={pill(form.level === l)}>
+            {l ? levelChipLabel(l) : "Todos los niveles"}
+            <span className="text-[10px] opacity-70">{levelCount(l)}</span>
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 flex-wrap mb-8">
+        {CATEGORY_KEYS.map((key) => (
+          <button key={key} onClick={() => newItem({ category: key })} className="px-3 py-1.5 text-sm font-medium border rounded-sm flex items-center gap-2" style={pill(form.category === key)}>
+            {cfg.categoryLabels[key]}
+            <span className="text-[10px] opacity-70">{categoryCount(key)}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10">
         <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-sm" style={sans}>
-              Área
-              <select
-                value={form.track}
-                onChange={(e) => { const track = e.target.value; setForm((f) => ({ ...f, track, level: "" })); }}
-                className="mt-1 w-full border px-3 py-2"
-                style={{ borderColor: cfg.colors.line }}
-              >
-                <option value="civil">{cfg.copy.civil.label}</option>
-                <option value="military">{cfg.copy.military.label}</option>
-              </select>
-            </label>
-            <label className="text-sm" style={sans}>
-              Categoría
-              <select value={form.category} onChange={(e) => updateField("category", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
-                {CATEGORY_KEYS.map((key) => <option key={key} value={key}>{cfg.categoryLabels[key]}</option>)}
-              </select>
-            </label>
-            <label className="text-sm" style={sans}>
-              Tipo
-              <select value={form.kind} onChange={(e) => updateField("kind", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
-                <option value="theory">Explicación teórica</option>
-                <option value="file">Documento descargable</option>
-              </select>
-            </label>
-            <label className="text-sm" style={sans}>
-              Nivel
-              <select value={form.level} onChange={(e) => updateField("level", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }}>
-                <option value="">Todos los niveles</option>
-                {LEVELS_BY_TRACK[form.track].map((l) => <option key={l} value={l}>{levelChipLabel(l)}</option>)}
-              </select>
-            </label>
+          <div className="flex items-center justify-between gap-3">
+            <h3 style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">
+              {editingId ? "Editando teoría" : "Nueva teoría"} · {form.level ? levelChipLabel(form.level) : "Todos los niveles"} · {cfg.categoryLabels[form.category]}
+            </h3>
+            {editingId && (
+              <button type="button" onClick={() => newItem()} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                Cancelar y crear nueva
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {[["theory", "Explicación escrita"], ["file", "Documento descargable"]].map(([key, label]) => (
+              <button key={key} type="button" onClick={() => updateField("kind", key)} className="px-3 py-1.5 text-xs font-semibold border rounded-sm" style={pill(form.kind === key)}>
+                {label}
+              </button>
+            ))}
           </div>
 
           <label className="text-sm block" style={sans}>
             Título
-            <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder={form.kind === "theory" ? "Ej. Cómo usar los conectores" : "Ej. Plantilla de vocabulario — Unidad 3"} />
+            <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder={form.kind === "theory" ? "Ej. Cómo usar los conectores" : "Ej. Phrasal verbs — Part 1"} />
           </label>
 
           {form.kind === "theory" ? (
             <label className="text-sm block" style={sans}>
               Texto de la explicación
-              <textarea value={form.body} onChange={(e) => updateField("body", e.target.value)} rows={6} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+              <textarea value={form.body} onChange={(e) => updateField("body", e.target.value)} rows={10} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
             </label>
           ) : (
-            <>
-              <label className="text-sm block" style={sans}>
-                Enlace o base64 del documento
-                <textarea value={form.fileUrl} onChange={(e) => updateField("fileUrl", e.target.value)} rows={3} placeholder="https://… o data:application/vnd.openxmlformats-officedocument.wordprocessingml.document;base64,…" className="mt-1 w-full border px-3 py-2 text-xs font-mono" style={{ borderColor: cfg.colors.line }} />
-              </label>
-              <label className="text-sm block" style={sans}>
-                Nombre del archivo al descargar (opcional)
-                <input value={form.fileName} onChange={(e) => updateField("fileName", e.target.value)} placeholder="unidad-3-vocabulario.docx" className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
-              </label>
-            </>
+            <div className="text-sm" style={sans}>
+              Documento (Word, PDF…)
+              <div className="mt-1 flex items-center gap-3 flex-wrap">
+                <label
+                  className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer w-fit"
+                  style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: fileBusy ? 0.5 : 1 }}
+                >
+                  <FileText size={13} />
+                  {fileBusy ? "Subiendo…" : form.fileUrl ? "Cambiar documento" : "Subir documento"}
+                  <input type="file" accept=".doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.txt" onChange={handleUploadFile} disabled={fileBusy} className="hidden" />
+                </label>
+                {form.fileUrl && <span style={{ color: "#5B6472" }} className="text-xs">{form.fileName || "Documento subido"}</span>}
+              </div>
+            </div>
           )}
 
           <div className="flex items-center gap-3">
-            <button type="submit" className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
-              Publicar
+            <button type="submit" disabled={fileBusy} className="px-5 py-2.5 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg, opacity: fileBusy ? 0.5 : 1 }}>
+              {editingId ? "Guardar cambios" : "Publicar"}
             </button>
             {message && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{message}</span>}
           </div>
         </form>
-      </div>
 
-      <div>
-        <div className="flex items-center justify-between mb-3">
-          <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Publicado</span>
-          <div className="flex items-center border rounded-full p-0.5" style={{ borderColor: cfg.colors.line }}>
-            {["civil", "military"].map((key) => {
-              const opt = trackInfo(key);
-              return (
-                <button key={key} onClick={() => setFilterTrack(key)} className="px-2.5 py-1 rounded-full text-[11px] font-semibold" style={{ ...sans, backgroundColor: filterTrack === key ? opt.accent : "transparent", color: filterTrack === key ? cfg.colors.card : "#5B6472" }}>
-                  {opt.label}
-                </button>
-              );
-            })}
+        <div>
+          <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold mb-3">
+            Publicado en {form.level ? levelChipLabel(form.level) : "Todos los niveles"} · {cfg.categoryLabels[form.category]}
           </div>
-        </div>
-        <ul className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
-          {[...filteredList].sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)).map((m) => (
-            <li key={m.id} className="flex items-center justify-between gap-2 p-3 border text-sm" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
-              <div className="min-w-0">
-                <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{m.title}</div>
-                <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
-                  {cfg.categoryLabels[m.category]} · {m.kind === "theory" ? "Teoría" : "Descarga"} · {m.level ? levelChipLabel(m.level) : "Todos los niveles"} · {formatDate(m.dateAdded)}
+          <ul className="space-y-2 max-h-[70vh] overflow-y-auto pr-1">
+            {list.map((m) => (
+              <li
+                key={m.id}
+                className="flex items-center justify-between gap-2 p-3 border text-sm"
+                style={{ borderColor: editingId === m.id ? cfg.colors.ink : cfg.colors.line, backgroundColor: cfg.colors.card }}
+              >
+                <div className="min-w-0">
+                  <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{m.title}</div>
+                  <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
+                    {m.kind === "theory" ? "Explicación escrita" : "Documento"} · {formatDate(m.dateAdded)}
+                  </div>
                 </div>
-              </div>
-              <button onClick={() => handleDelete(m.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
-            </li>
-          ))}
-          {filteredList.length === 0 && (
-            <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no hay recursos en esta área.</p>
-          )}
-        </ul>
+                <div className="flex items-center gap-3 shrink-0">
+                  <button onClick={() => startEdit(m)} style={{ color: cfg.colors.ink }} title="Editar"><Pencil size={16} /></button>
+                  <button onClick={() => handleDelete(m)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
+                </div>
+              </li>
+            ))}
+            {list.length === 0 && (
+              <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no hay teoría en esta categoría y nivel.</p>
+            )}
+          </ul>
+        </div>
       </div>
     </div>
   );
 }
+
 
 /* ------------------------------------------------------------------ */
 /*  Admin — tab: Diseño de portada (orden y visibilidad de bloques)     */
@@ -5497,7 +5556,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
     { key: "content", label: "Ejercicios", icon: FileText },
     { key: "articles", label: "Artículos", icon: Newspaper },
     { key: "reviews", label: "Reseñas", icon: Star },
-    { key: "materials", label: "Recursos", icon: FileText },
+    { key: "materials", label: "Teoría", icon: BookOpen },
     { key: "students", label: pendingCount > 0 ? `Alumnos (${pendingCount})` : "Alumnos", icon: Users },
     { key: "progress", label: "Progreso", icon: TrendingUp },
     { key: "layout", label: "Diseño", icon: LayoutGrid },

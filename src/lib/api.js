@@ -322,6 +322,22 @@ export async function insertMaterial(m) {
   return rowToMaterial(data);
 }
 
+export async function updateMaterial(id, m) {
+  const row = {
+    track: m.track,
+    category: m.category,
+    kind: m.kind,
+    title: m.title,
+    body: m.body,
+    file_url: m.fileUrl,
+    file_name: m.fileName,
+    level: m.level || null,
+  };
+  const { data, error } = await supabase.from("materials").update(row).eq("id", id).select().single();
+  if (error) throw error;
+  return rowToMaterial(data);
+}
+
 export async function deleteMaterial(id) {
   const { error } = await supabase.from("materials").delete().eq("id", id);
   if (error) throw error;
