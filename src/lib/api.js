@@ -113,14 +113,21 @@ function rowToExercise(r) {
     theoryFileName: r.theory_file_name || "",
     part: r.part || "",
     durationMinutes: r.duration_minutes || null,
+    icon: r.icon || "",
   };
 }
 
 // Columns added later are only sent when used, so publishing keeps working
 // even before the matching migration has been run.
 function optionalExerciseColumns(ex) {
-  if (!ex.part) return {};
-  return { part: ex.part, duration_minutes: ex.durationMinutes ? Number(ex.durationMinutes) : null };
+  const cols = {};
+  if (ex.part) {
+    cols.part = ex.part;
+    cols.duration_minutes = ex.durationMinutes ? Number(ex.durationMinutes) : null;
+  }
+  // The icon column is only sent when there is an icon to set or one to clear.
+  if (ex.icon || ex.hadIcon) cols.icon = ex.icon || "";
+  return cols;
 }
 
 export async function fetchExercises() {
@@ -297,6 +304,7 @@ function rowToMaterial(r) {
     fileName: r.file_name || "",
     dateAdded: r.date_added,
     level: r.level || "",
+    icon: r.icon || "",
   };
 }
 
@@ -316,6 +324,7 @@ export async function insertMaterial(m) {
     file_url: m.fileUrl,
     file_name: m.fileName,
     level: m.level || null,
+    ...(m.icon || m.hadIcon ? { icon: m.icon || "" } : {}),
   };
   const { data, error } = await supabase.from("materials").insert(row).select().single();
   if (error) throw error;
@@ -332,6 +341,7 @@ export async function updateMaterial(id, m) {
     file_url: m.fileUrl,
     file_name: m.fileName,
     level: m.level || null,
+    ...(m.icon || m.hadIcon ? { icon: m.icon || "" } : {}),
   };
   const { data, error } = await supabase.from("materials").update(row).eq("id", id).select().single();
   if (error) throw error;

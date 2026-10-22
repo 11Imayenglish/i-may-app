@@ -32,7 +32,8 @@ create table if not exists exercises (
   theory_file_url text default '',
   theory_file_name text default '',
   part text default '',
-  duration_minutes int
+  duration_minutes int,
+  icon text default ''
 );
 
 create table if not exists articles (
@@ -67,7 +68,8 @@ create table if not exists materials (
   file_url text default '',
   file_name text default '',
   date_added timestamptz not null default now(),
-  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4'))
+  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4')),
+  icon text default ''
 );
 
 create table if not exists submissions (

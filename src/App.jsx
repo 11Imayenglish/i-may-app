@@ -698,7 +698,7 @@ function IntroBlock({ exercises, setView, track, userLevel }) {
                   </span>
                   <span>
                     <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium group-hover:underline">
-                      {e.title}
+                      <TitleIcon value={e.icon} />{e.title}
                     </span>
                     <span style={{ ...sans, color: "#5B6472" }} className="block text-xs">
                       {cfg.categoryLabels[e.type]} · Nivel {e.level} · {formatDate(e.dateAdded)}
@@ -922,7 +922,7 @@ function MaterialsSection({ materials, type, track, userLevel, embedded = false 
               <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full text-left p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
-                    <BookOpen size={14} style={{ color: t.accent }} /> {m.title}
+                    {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <BookOpen size={14} style={{ color: t.accent }} />} {m.title}
                   </span>
                   <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
                 </div>
@@ -935,7 +935,7 @@ function MaterialsSection({ materials, type, track, userLevel, embedded = false 
             ) : (
               <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
                 <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
-                  <FileText size={14} style={{ color: t.accent }} /> {m.title}
+                  {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <FileText size={14} style={{ color: t.accent }} />} {m.title}
                 </span>
                 <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
               </a>
@@ -994,7 +994,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
                       <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full text-left p-3">
                         <div className="flex items-center justify-between gap-2">
                           <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
-                            <BookOpen size={14} style={{ color: t.accent }} /> {m.title}
+                            {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <BookOpen size={14} style={{ color: t.accent }} />} {m.title}
                             {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                           </span>
                           <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
@@ -1008,7 +1008,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
                     ) : (
                       <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
                         <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
-                          <FileText size={14} style={{ color: t.accent }} /> {m.title}
+                          {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <FileText size={14} style={{ color: t.accent }} />} {m.title}
                           {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                         </span>
                         <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
@@ -1088,7 +1088,7 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
               >
                 <div>
                   <div style={{ ...sans, color: colors.ink }} className="font-medium">
-                    {e.title}
+                    <TitleIcon value={e.icon} />{e.title}
                   </div>
                   <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-2 mt-1">
                     <Clock size={12} /> {formatDate(e.dateAdded)}
@@ -1266,7 +1266,7 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
                     >
                       <div>
                         <div style={{ ...sans, color: colors.ink }} className="font-medium">
-                          Ejercicio {i + 1}
+                          <TitleIcon value={e.icon} />Ejercicio {i + 1}
                           {e.title ? <span style={{ color: "#5B6472" }} className="font-normal"> · {e.title}</span> : null}
                         </div>
                         <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-2 mt-1 flex-wrap">
@@ -1536,7 +1536,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
       <div className="flex items-center gap-3 mb-1">
         <CategoryIcon catKey={exercise.type} size={20} style={{ color: t.accent }} />
         <h2 style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold">
-          {exercise.title}
+          <TitleIcon value={exercise.icon} size={24} />{exercise.title}
         </h2>
       </div>
       <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-3 mb-6">
@@ -2270,7 +2270,7 @@ const EMPTY_QUESTION = (kind = "choice") =>
     ? { id: uid(), kind: "text", question: "", options: [], correctIndex: 0, answers: [], explanation: "", passage: "", audioUrl: "" }
     : { id: uid(), question: "", options: ["", "", "", ""], correctIndex: 0, explanation: "", passage: "", audioUrl: "" };
 function emptyForm(type = "grammar", track = "civil") {
-  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", questions: [EMPTY_QUESTION()] };
+  return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", icon: "", questions: [EMPTY_QUESTION()] };
 }
 
 function blankCambridgeForm(level, part, existingCount) {
@@ -2930,7 +2930,7 @@ function CambridgeExerciseList({ exam, exercises, selectedId, onOpen, onEditOthe
       <div className="min-w-0">
         <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate flex items-center gap-1.5">
           <span style={{ color: accent }} className="text-xs font-semibold shrink-0">{label}</span>
-          <span className="truncate">{e.title}</span>
+          <span className="truncate"><TitleIcon value={e.icon} />{e.title}</span>
           {e.type === "reading" && !e.passage?.trim() && !(e.questions || []).some((q) => q.passage?.trim()) && (
             <span title="Sin texto de lectura — el alumno no verá nada que leer">
               <AlertTriangle size={13} style={{ color: cfg.colors.error }} />
@@ -3045,6 +3045,7 @@ function ContentTab({ exercises, setExercises, track }) {
       type: ex.type,
       track: ex.track,
       title: ex.title,
+      icon: ex.icon || "",
       level: ex.level,
       part: ex.part || "",
       durationMinutes: ex.durationMinutes || "",
@@ -3184,6 +3185,7 @@ function ContentTab({ exercises, setExercises, track }) {
     }
     const exerciseData = {
       type: form.type, track: form.track, title: form.title.trim(), level: form.level,
+      icon: form.icon.trim(), hadIcon: !!exercises.find((x) => x.id === editingId)?.icon,
       part: form.part, durationMinutes: form.type === "writing" ? null : form.durationMinutes,
       instructions: form.instructions.trim(), passage: form.passage.trim(),
       minWords: form.type === "writing" ? Number(form.minWords) || 0 : null,
@@ -3205,7 +3207,7 @@ function ContentTab({ exercises, setExercises, track }) {
         okMessage = "Publicado correctamente.";
       }
     } catch {
-      setMessage("No se pudo guardar. Inténtalo de nuevo. (Si es un ejercicio de Cambridge y es la primera vez, comprueba que has ejecutado el SQL de las columnas nuevas.)");
+      setMessage("No se pudo guardar. Inténtalo de nuevo. (Si usas partes de Cambridge o emojis por primera vez, comprueba que has ejecutado el SQL de las columnas nuevas.)");
       return;
     }
     if (isCam) {
@@ -3325,6 +3327,8 @@ function ContentTab({ exercises, setExercises, track }) {
             Título
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder="Ej. Reported Speech in Emails" />
           </label>
+
+          <IconField value={form.icon} onChange={(v) => updateField("icon", v)} library={cfg.emojiLibrary} />
 
           {isCam && form.type !== "writing" && (
             <label className="text-sm block max-w-[260px]" style={sans}>
@@ -3707,7 +3711,7 @@ function ContentTab({ exercises, setExercises, track }) {
             >
               <div className="min-w-0">
                 <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate flex items-center gap-1.5">
-                  {e.title}
+                  <TitleIcon value={e.icon} />{e.title}
                   {e.type === "reading" && !e.passage?.trim() && !(e.questions || []).some((q) => q.passage?.trim()) && (
                     <span title="Sin texto de lectura — el alumno no verá nada que leer">
                       <AlertTriangle size={13} style={{ color: cfg.colors.error }} />
@@ -4209,6 +4213,59 @@ function EmojiPreview({ value, size = 28 }) {
     return <img src={value} alt="" style={{ height: size, width: size, objectFit: "contain" }} />;
   }
   return <span style={{ fontSize: size, lineHeight: 1 }}>{value}</span>;
+}
+
+// Inline emoji/icon shown before a title; renders nothing when there is none.
+function TitleIcon({ value, size = 16 }) {
+  if (!value) return null;
+  return (
+    <span className="inline-flex align-middle mr-1.5">
+      <EmojiPreview value={value} size={size} />
+    </span>
+  );
+}
+
+const QUICK_EMOJIS = ["📘", "📖", "📝", "✏️", "🎧", "🗣️", "💡", "⭐", "🔥", "✅", "❗", "🎯", "🧠", "🔤", "⏱️", "🏆"];
+
+// Optional emoji (or small image) shown next to an exercise's or theory's title.
+function IconField({ value, onChange, library, label = "Emoji (opcional — se ve junto al título)" }) {
+  const { cfg, sans } = useTheme();
+  return (
+    <div className="text-sm" style={sans}>
+      {label}
+      <div className="flex items-center gap-3 mt-1">
+        <div className="w-10 h-10 border flex items-center justify-center shrink-0" style={{ borderColor: cfg.colors.line }}>
+          <EmojiPreview value={value} size={20} />
+        </div>
+        <input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="Escribe o pega un emoji, o elige uno abajo"
+          className="flex-1 border px-3 py-2 text-sm"
+          style={{ borderColor: cfg.colors.line }}
+        />
+        {value && (
+          <button type="button" onClick={() => onChange("")} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+            Quitar
+          </button>
+        )}
+      </div>
+      <div className="flex items-center gap-1.5 flex-wrap mt-2">
+        {QUICK_EMOJIS.map((em) => (
+          <button
+            key={em}
+            type="button"
+            onClick={() => onChange(em)}
+            className="w-8 h-8 flex items-center justify-center border rounded-sm hover:opacity-70"
+            style={{ borderColor: value === em ? cfg.colors.ink : cfg.colors.line, fontSize: 16 }}
+          >
+            {em}
+          </button>
+        ))}
+      </div>
+      <LibraryPicker library={library || []} onPick={onChange} />
+    </div>
+  );
 }
 
 function EmojisTab({ cfg, updateConfig }) {
@@ -5150,7 +5207,7 @@ function ReviewsTab({ reviews, setReviews }) {
 /*  Admin — tab: Teoría (explicaciones y documentos descargables)       */
 /* ------------------------------------------------------------------ */
 function emptyMaterialForm(track = "civil", level = "", category = "grammar") {
-  return { track, category, kind: "theory", title: "", body: "", fileUrl: "", fileName: "", level };
+  return { track, category, kind: "theory", title: "", body: "", fileUrl: "", fileName: "", level, icon: "" };
 }
 
 function MaterialsTab({ materials, setMaterials, track }) {
@@ -5185,7 +5242,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
   function startEdit(m) {
     setEditingId(m.id);
     setMessage("");
-    setForm({ track: m.track, category: m.category, kind: m.kind, title: m.title, body: m.body, fileUrl: m.fileUrl, fileName: m.fileName, level: m.level });
+    setForm({ track: m.track, category: m.category, kind: m.kind, title: m.title, body: m.body, fileUrl: m.fileUrl, fileName: m.fileName, level: m.level, icon: m.icon || "" });
   }
 
   async function handleUploadFile(e) {
@@ -5225,6 +5282,8 @@ function MaterialsTab({ materials, setMaterials, track }) {
       fileUrl: form.kind === "file" ? form.fileUrl.trim() : "",
       fileName: form.kind === "file" ? form.fileName.trim() : "",
       level: form.level,
+      icon: form.icon.trim(),
+      hadIcon: !!materials.find((x) => x.id === editingId)?.icon,
     };
     try {
       if (editingId) {
@@ -5239,7 +5298,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
       }
       setForm(emptyMaterialForm(form.track, form.level, form.category));
     } catch {
-      setMessage("No se pudo guardar. Inténtalo de nuevo.");
+      setMessage("No se pudo guardar. Inténtalo de nuevo. (Si usas emojis por primera vez, comprueba que has ejecutado el SQL de la columna nueva.)");
     }
   }
 
@@ -5318,6 +5377,8 @@ function MaterialsTab({ materials, setMaterials, track }) {
             <input value={form.title} onChange={(e) => updateField("title", e.target.value)} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} placeholder={form.kind === "theory" ? "Ej. Cómo usar los conectores" : "Ej. Phrasal verbs — Part 1"} />
           </label>
 
+          <IconField value={form.icon} onChange={(v) => updateField("icon", v)} library={cfg.emojiLibrary} />
+
           {form.kind === "theory" ? (
             <label className="text-sm block" style={sans}>
               Texto de la explicación
@@ -5360,7 +5421,7 @@ function MaterialsTab({ materials, setMaterials, track }) {
                 style={{ borderColor: editingId === m.id ? cfg.colors.ink : cfg.colors.line, backgroundColor: cfg.colors.card }}
               >
                 <div className="min-w-0">
-                  <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate">{m.title}</div>
+                  <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate"><TitleIcon value={m.icon} />{m.title}</div>
                   <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
                     {m.kind === "theory" ? "Explicación escrita" : "Documento"} · {formatDate(m.dateAdded)}
                   </div>
