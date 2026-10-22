@@ -2809,6 +2809,7 @@ function CambridgeNav({ exam, partKey, exerciseId, exercises, onOpen }) {
             style={pill(exam === level)}
           >
             {CAMBRIDGE_EXAMS[level].name}
+            <span className="ml-2 text-[11px] opacity-70">{civil.filter((e) => e.level === level && e.part).length}</span>
           </button>
         ))}
       </div>
@@ -2877,6 +2878,85 @@ function CambridgeNav({ exam, partKey, exerciseId, exercises, onOpen }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Everything uploaded for the selected Cambridge exam, grouped by part.
+function CambridgeExerciseList({ exam, exercises, selectedId, onOpen, onEditOther, onDelete }) {
+  const { cfg, sans, serif, trackInfo } = useTheme();
+  const accent = trackInfo("civil").accent;
+  const examDef = CAMBRIDGE_EXAMS[exam];
+  const mine = exercises.filter((e) => e.track === "civil" && e.level === exam);
+  const known = new Set(examDef.parts.map((p) => p.key));
+  const byDate = (a, b) => new Date(a.dateAdded) - new Date(b.dateAdded);
+  const groups = examDef.parts
+    .map((p) => ({ part: p, items: mine.filter((e) => e.part === p.key).sort(byDate) }))
+    .filter((g) => g.items.length);
+  const orphans = mine.filter((e) => !known.has(e.part)).sort(byDate);
+  const total = mine.length;
+
+  const row = (e, label, open, hint) => (
+    <li
+      key={e.id}
+      className="flex items-center justify-between gap-2 p-3 border text-sm"
+      style={{ borderColor: cfg.colors.line, backgroundColor: selectedId === e.id ? mix(cfg.colors.ink, cfg.colors.card, 0.92) : cfg.colors.card }}
+    >
+      <div className="min-w-0">
+        <div style={{ ...sans, color: cfg.colors.ink }} className="font-medium truncate flex items-center gap-1.5">
+          <span style={{ color: accent }} className="text-xs font-semibold shrink-0">{label}</span>
+          <span className="truncate">{e.title}</span>
+          {e.type === "reading" && !e.passage?.trim() && !(e.questions || []).some((q) => q.passage?.trim()) && (
+            <span title="Sin texto de lectura — el alumno no verá nada que leer">
+              <AlertTriangle size={13} style={{ color: cfg.colors.error }} />
+            </span>
+          )}
+        </div>
+        <div style={{ ...sans, color: "#5B6472" }} className="text-xs">
+          {e.type === "writing" ? "Redacción" : `${e.questions?.length || 0} preguntas`}
+          {e.durationMinutes ? ` · ${e.durationMinutes} min` : ""} · {formatDate(e.dateAdded)}
+          {hint ? ` · ${hint}` : ""}
+        </div>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        <button type="button" onClick={open} style={{ color: cfg.colors.ink }} title="Editar"><Pencil size={15} /></button>
+        <button type="button" onClick={() => onDelete(e.id)} style={{ color: cfg.colors.error }} title="Eliminar"><Trash2 size={16} /></button>
+      </div>
+    </li>
+  );
+
+  return (
+    <div>
+      <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">
+        Ejercicios subidos — {examDef.name}
+      </span>
+      <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-1 mb-3">
+        {total} ejercicio{total === 1 ? "" : "s"} en total. Pulsa el lápiz para abrir uno y corregirlo.
+      </p>
+      <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+        {groups.map(({ part, items }) => (
+          <div key={part.key}>
+            <h5 style={{ ...serif, color: cfg.colors.ink }} className="text-sm font-semibold mb-1.5">
+              {part.sectionLabel} · {part.label}
+              <span style={{ color: "#5B6472" }} className="font-normal"> — {part.title}</span>
+            </h5>
+            <ul className="space-y-1.5">
+              {items.map((e, i) => row(e, `Ej. ${i + 1}`, () => onOpen(exam, part.key, e.id)))}
+            </ul>
+          </div>
+        ))}
+        {orphans.length > 0 && (
+          <div>
+            <h5 style={{ ...serif, color: cfg.colors.ink }} className="text-sm font-semibold mb-1.5">Sin parte asignada</h5>
+            <ul className="space-y-1.5">
+              {orphans.map((e) => row(e, e.type, () => onEditOther(e), "se edita en «Otros ejercicios»"))}
+            </ul>
+          </div>
+        )}
+        {total === 0 && (
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no has subido ningún ejercicio de este examen.</p>
+        )}
+      </div>
     </div>
   );
 }
@@ -3119,8 +3199,9 @@ function ContentTab({ exercises, setExercises, track }) {
     try {
       await api.deleteExercise(id);
       setExercises((prev) => prev.filter((e) => e.id !== id));
-      if (isCam) openCambridge(cExam, cPartKey, "new", id);
-      else if (editingId === id) cancelEdit();
+      if (isCam) {
+        if (editingId === id) openCambridge(cExam, cPartKey, "new", id);
+      } else if (editingId === id) cancelEdit();
     } catch {
       setMessage("No se pudo eliminar. Inténtalo de nuevo.");
     }
@@ -3176,7 +3257,7 @@ function ContentTab({ exercises, setExercises, track }) {
         />
       )}
 
-    <div className={isCam ? "max-w-3xl" : "grid lg:grid-cols-[1.1fr_0.9fr] gap-10"}>
+    <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-10">
       <div>
         {!isCam && (
           <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-6">
@@ -3560,7 +3641,16 @@ function ContentTab({ exercises, setExercises, track }) {
         </form>
       </div>
 
-      {!isCam && (
+      {isCam ? (
+        <CambridgeExerciseList
+          exam={cExam}
+          exercises={exercises}
+          selectedId={editingId}
+          onOpen={openCambridge}
+          onEditOther={(ex) => { setMode("general"); setBulkOpen(false); setBulkText(""); startEdit(ex); }}
+          onDelete={handleDelete}
+        />
+      ) : (
       <div>
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">
