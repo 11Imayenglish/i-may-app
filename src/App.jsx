@@ -891,7 +891,7 @@ function Home({ exercises, articles, reviews, setView, track, currentUser }) {
 /* ------------------------------------------------------------------ */
 /*  Category list                                                       */
 /* ------------------------------------------------------------------ */
-function MaterialsSection({ materials, type, track, userLevel }) {
+function MaterialsSection({ materials, type, track, userLevel, embedded = false }) {
   const { cfg, colors, serif, sans, trackInfo } = useTheme();
   const t = trackInfo(track);
   const [openId, setOpenId] = useState(null);
@@ -902,13 +902,19 @@ function MaterialsSection({ materials, type, track, userLevel }) {
         .sort((a, b) => new Date(b.dateAdded) - new Date(a.dateAdded)),
     [materials, type, track, userLevel]
   );
-  if (list.length === 0) return null;
+  if (list.length === 0) {
+    return embedded ? (
+      <p style={{ ...sans, color: "#5B6472" }}>Todavía no hay teoría publicada para este examen en esta sección.</p>
+    ) : null;
+  }
 
   return (
-    <div className="mb-10">
-      <h3 style={{ ...sans, color: "#5B6472" }} className="text-xs uppercase tracking-widest font-semibold mb-3">
-        Teoría y recursos descargables
-      </h3>
+    <div className={embedded ? "" : "mb-10"}>
+      {!embedded && (
+        <h3 style={{ ...sans, color: "#5B6472" }} className="text-xs uppercase tracking-widest font-semibold mb-3">
+          Teoría y recursos descargables
+        </h3>
+      )}
       <ul className="space-y-2">
         {list.map((m) => (
           <li key={m.id} className="border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
@@ -1123,12 +1129,15 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
     [exercises, type, track, userLevel]
   );
   const others = useMemo(() => mine.filter((e) => !e.part), [mine]);
-  const [sel, setSel] = useState(initialPart || parts[0]?.key || "other");
+  const [sel, setSel] = useState(initialPart || parts[0]?.key || "theory");
 
   useEffect(() => {
-    if (sel === "other" ? others.length > 0 : parts.some((p) => p.key === sel)) return;
-    setSel(parts[0]?.key || "other");
-  }, [parts, others.length, sel]);
+    if (sel === "other" || sel === "theory" || parts.some((p) => p.key === sel)) return;
+    setSel(parts[0]?.key || "theory");
+  }, [parts, sel]);
+
+  const theoryLevel = hasExam ? exam : userLevel;
+  const theoryCount = materials.filter((m) => m.category === type && m.track === track && matchesLevel(m.level, theoryLevel)).length;
 
   function priorFor(exerciseId) {
     if (!currentUser || !submissions) return null;
@@ -1192,16 +1201,19 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
         </div>
       )}
 
-      {/* Theory follows the selected exam: B2 theory only shows under FCE, etc. */}
-      <MaterialsSection materials={materials} type={type} track={track} userLevel={hasExam ? exam : userLevel} />
-
-      {parts.length === 0 && others.length === 0 ? (
-        <p style={{ ...sans, color: "#5B6472" }}>
-          Todavía no hay contenido en esta sección para el área {t.label.toLowerCase()}.
-        </p>
-      ) : (
+      {(
         <>
           <div className="flex items-center gap-2 flex-wrap mb-6">
+            {/* Theory follows the selected exam: B2 theory only shows under FCE, etc. */}
+            <button
+              onClick={() => setSel("theory")}
+              className="px-3 py-2 text-sm font-medium border rounded-sm flex items-center gap-2"
+              style={tab(sel === "theory")}
+            >
+              <BookOpen size={14} />
+              Teoría
+              <span className="text-[10px] opacity-70">{theoryCount}</span>
+            </button>
             {parts.map((p) => {
               const n = countFor(p.key);
               return (
@@ -1217,12 +1229,15 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
                 </button>
               );
             })}
-            {others.length > 0 && (
-              <button onClick={() => setSel("other")} className="px-3 py-2 text-sm font-medium border rounded-sm" style={tab(sel === "other")}>
-                Otros ejercicios
-              </button>
-            )}
+            <button onClick={() => setSel("other")} className="px-3 py-2 text-sm font-medium border rounded-sm flex items-center gap-2" style={tab(sel === "other")}>
+              Otros ejercicios
+              <span className="text-[10px] opacity-70">{others.length}</span>
+            </button>
           </div>
+
+          {sel === "theory" && (
+            <MaterialsSection embedded materials={materials} type={type} track={track} userLevel={theoryLevel} />
+          )}
 
           {partDef && (
             <div className="mb-5">
@@ -1234,8 +1249,10 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
             </div>
           )}
 
-          {list.length === 0 ? (
-            <p style={{ ...sans, color: "#5B6472" }}>Todavía no hay ejercicios en esta parte.</p>
+          {sel === "theory" ? null : list.length === 0 ? (
+            <p style={{ ...sans, color: "#5B6472" }}>
+              {sel === "other" ? "Todavía no hay otros ejercicios." : "Todavía no hay ejercicios en esta parte."}
+            </p>
           ) : (
             <ul className="space-y-3">
               {list.map((e, i) => {
