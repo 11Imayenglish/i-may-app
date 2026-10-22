@@ -1650,11 +1650,16 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </div>
       )}
 
-      {exercise.instructions && (
-        <p style={{ ...sans, color: "#5B6472" }} className="mb-6 italic">
+      {exercise.instructions && (exercise.type === "writing" && exercise.track === "civil" ? (
+        <div className="p-5 mb-4 border" style={{ borderColor: t.accent, backgroundColor: t.accentSoft }}>
+          <div style={{ ...sans, color: t.accentDeep }} className="text-[11px] font-semibold uppercase tracking-widest mb-2">Enunciado</div>
+          <p style={{ ...sans, color: t.accentDeep }} className="text-sm leading-relaxed whitespace-pre-line">{exercise.instructions}</p>
+        </div>
+      ) : (
+        <p style={{ ...sans, color: "#5B6472" }} className={`mb-6 italic ${exercise.track === "civil" ? "whitespace-pre-line" : ""}`}>
           {exercise.instructions}
         </p>
-      )}
+      ))}
 
       {exercise.type === "grammar" && exercise.theoryFileUrl && (
         <a
@@ -1704,7 +1709,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
 
       {exercise.type === "writing" ? (
         <div>
-          <div className="p-5 border text-sm leading-relaxed" style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
+          <div className={`p-5 border text-sm leading-relaxed ${exercise.track === "civil" ? "whitespace-pre-line" : ""}`} style={{ borderColor: colors.line, backgroundColor: colors.card, color: colors.ink, ...sans }}>
             {exercise.passage}
           </div>
           {exercise.minWords > 0 && (
@@ -3475,9 +3480,22 @@ function ContentTab({ exercises, setExercises, track }) {
 
           {form.type === "writing" && (
             <>
+              {form.track === "civil" && (
+                <label className="text-sm block" style={sans}>
+                  Enunciado — qué debe hacer el alumno
+                  <textarea
+                    value={form.instructions}
+                    onChange={(e) => updateField("instructions", e.target.value)}
+                    rows={3}
+                    placeholder="Ej. Write an email to your friend (100–120 words). Se muestra tal cual lo escribes, con tus saltos de línea."
+                    className="mt-1 w-full border px-3 py-2"
+                    style={{ borderColor: cfg.colors.line }}
+                  />
+                </label>
+              )}
               <label className="text-sm block" style={sans}>
-                Enunciado de la redacción
-                <textarea value={form.passage} onChange={(e) => updateField("passage", e.target.value)} rows={4} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
+                {form.track === "civil" ? "Texto de la tarea (se muestra tal cual lo pegas, con sus saltos de línea y espacios)" : "Enunciado de la redacción"}
+                <textarea value={form.passage} onChange={(e) => updateField("passage", e.target.value)} rows={form.track === "civil" ? 8 : 4} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
               </label>
               <label className="text-sm block max-w-[180px]" style={sans}>
                 Mínimo de palabras
