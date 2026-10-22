@@ -1330,8 +1330,13 @@ function QuestionBlock({ q, index, onAnswer, selected, examMode = false, reveale
         </div>
       )}
       <p style={{ ...sans, color: colors.ink }} className="font-medium mb-3 whitespace-pre-line">
-        {/* An empty statement (or one that is just a number) shows only the question number. */}
-        {index + 1}.{q.question && !/^\d+[.)]?$/.test(q.question.trim()) ? ` ${q.question}` : ""}
+        {/* An empty statement shows the position number; a statement that is just a number ("24.") shows that number. */}
+        {(() => {
+          const text = (q.question || "").trim();
+          const num = text.match(/^(\d+)\s*[.)]?$/);
+          if (num) return `${num[1]}.`;
+          return `${index + 1}.${text ? ` ${q.question}` : ""}`;
+        })()}
       </p>
       {q.kind === "text" ? (
         <div>
@@ -2521,7 +2526,7 @@ function parseStructuredBulk(text, type) {
     }
     // A bare number ("1." / "2)") right above the options: the statement is just the question number.
     if (/^\d{1,3}\s*[.)\-:–]?$/.test(s) && nextIsFirstOption(i)) {
-      startQuestion("");
+      startQuestion(s.match(/\d+/)[0]);
       continue;
     }
 
