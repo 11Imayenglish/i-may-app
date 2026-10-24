@@ -439,6 +439,24 @@ function isRecent(iso) {
 /* ------------------------------------------------------------------ */
 /*  Small UI atoms                                                     */
 /* ------------------------------------------------------------------ */
+// Shown to visitors and not-yet-approved students: they can browse everything,
+// but opening exercises, articles and downloads needs an approved account.
+function AccessBanner() {
+  const { access, colors, sans } = useTheme();
+  if (access.granted) return null;
+  return (
+    <div className="mb-8 p-4 border flex items-center justify-between gap-4 flex-wrap" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+      <p style={{ ...sans, color: "#5B6472" }} className="text-sm flex items-start gap-2 flex-1 min-w-[220px]">
+        <Lock size={15} className="mt-0.5 shrink-0" />
+        Estás viendo la web como visitante: puedes ver todo lo que hay, pero para abrir los ejercicios, artículos y descargas necesitas crear tu cuenta y que sea aprobada.
+      </p>
+      <button onClick={access.request} className="px-4 py-2 text-sm font-semibold rounded-sm" style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}>
+        Crear cuenta / Iniciar sesión
+      </button>
+    </div>
+  );
+}
+
 function LevelBadge({ level, accent }) {
   const { sans } = useTheme();
   return (
@@ -836,7 +854,7 @@ function AllReviewsView({ reviews, setView }) {
   );
 }
 
-function PublicHome({ articles, reviews, setView, track }) {
+function PublicHome({ exercises, articles, reviews, setView, track }) {
   const { cfg, colors, serif, sans, trackInfo, logoSrc, bannerUrl } = useTheme();
   const t = trackInfo(track);
   return (
@@ -862,14 +880,18 @@ function PublicHome({ articles, reviews, setView, track }) {
           {t.paragraph}
         </p>
         <button
-          onClick={() => setView({ name: "grammar" })}
+          onClick={() => setView({ name: "access" })}
           className="px-5 py-3 text-sm font-semibold rounded-sm"
           style={{ ...sans, backgroundColor: colors.ink, color: colors.bg }}
         >
           Crear cuenta / Iniciar sesión
         </button>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-3 max-w-xl">
+          Puedes ver todo lo que hay en la web. Para abrir los ejercicios, artículos y descargas necesitas una cuenta aprobada.
+        </p>
       </section>
 
+      <CategoriesBlock exercises={exercises} setView={setView} track={track} userLevel={undefined} />
       <ArticlesBlock articles={articles} track={track} setView={setView} />
       <ReviewsBlock reviews={reviews} setView={setView} />
     </>
@@ -892,7 +914,7 @@ function Home({ exercises, articles, reviews, setView, track, currentUser }) {
 /*  Category list                                                       */
 /* ------------------------------------------------------------------ */
 function MaterialsSection({ materials, type, track, userLevel, embedded = false }) {
-  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const { cfg, colors, serif, sans, trackInfo, access } = useTheme();
   const t = trackInfo(track);
   const [openId, setOpenId] = useState(null);
   const list = useMemo(
@@ -919,12 +941,14 @@ function MaterialsSection({ materials, type, track, userLevel, embedded = false 
         {list.map((m) => (
           <li key={m.id} className="border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
             {m.kind === "theory" ? (
-              <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full text-left p-3">
+              <button onClick={() => (access.granted ? setOpenId(openId === m.id ? null : m.id) : access.request())} className="w-full text-left p-3">
                 <div className="flex items-center justify-between gap-2">
                   <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                     {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <BookOpen size={14} style={{ color: t.accent }} />} {m.title}
                   </span>
-                  <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
+                  <span style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-1">
+                    {!access.granted ? <><Lock size={11} /> Con cuenta</> : openId === m.id ? "Ocultar" : "Leer"}
+                  </span>
                 </div>
                 {openId === m.id && (
                   <p style={{ ...sans, color: "#5B6472" }} className="text-sm mt-2 leading-relaxed whitespace-pre-line">
@@ -933,11 +957,18 @@ function MaterialsSection({ materials, type, track, userLevel, embedded = false 
                 )}
               </button>
             ) : (
-              <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
+              <a
+                href={access.granted ? m.fileUrl : "#"}
+                onClick={access.granted ? undefined : (e) => { e.preventDefault(); access.request(); }}
+                download={access.granted ? m.fileName || m.title : undefined}
+                className="flex items-center justify-between gap-2 p-3"
+              >
                 <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                   {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <FileText size={14} style={{ color: t.accent }} />} {m.title}
                 </span>
-                <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
+                <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold flex items-center gap-1">
+                  {access.granted ? "Descargar" : <><Lock size={11} /> Con cuenta</>}
+                </span>
               </a>
             )}
           </li>
@@ -948,7 +979,7 @@ function MaterialsSection({ materials, type, track, userLevel, embedded = false 
 }
 
 function TemarioView({ materials, track, setView, currentUser }) {
-  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const { cfg, colors, serif, sans, trackInfo, access } = useTheme();
   const t = trackInfo(track);
   const userLevel = currentUser?.level;
   const byCategory = useMemo(() => {
@@ -969,6 +1000,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
         Temario
       </h2>
       <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
+      <AccessBanner />
 
       {!hasAny ? (
         <p style={{ ...sans, color: "#5B6472" }}>
@@ -991,13 +1023,15 @@ function TemarioView({ materials, track, setView, currentUser }) {
                 {byCategory[key].map((m) => (
                   <li key={m.id} className="border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
                     {m.kind === "theory" ? (
-                      <button onClick={() => setOpenId(openId === m.id ? null : m.id)} className="w-full text-left p-3">
+                      <button onClick={() => (access.granted ? setOpenId(openId === m.id ? null : m.id) : access.request())} className="w-full text-left p-3">
                         <div className="flex items-center justify-between gap-2">
                           <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                             {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <BookOpen size={14} style={{ color: t.accent }} />} {m.title}
                             {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                           </span>
-                          <span style={{ ...sans, color: "#5B6472" }} className="text-xs">{openId === m.id ? "Ocultar" : "Leer"}</span>
+                          <span style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-1">
+                    {!access.granted ? <><Lock size={11} /> Con cuenta</> : openId === m.id ? "Ocultar" : "Leer"}
+                  </span>
                         </div>
                         {openId === m.id && (
                           <p style={{ ...sans, color: "#5B6472" }} className="text-sm mt-2 leading-relaxed whitespace-pre-line">
@@ -1006,12 +1040,19 @@ function TemarioView({ materials, track, setView, currentUser }) {
                         )}
                       </button>
                     ) : (
-                      <a href={m.fileUrl} download={m.fileName || m.title} className="flex items-center justify-between gap-2 p-3">
+                      <a
+                href={access.granted ? m.fileUrl : "#"}
+                onClick={access.granted ? undefined : (e) => { e.preventDefault(); access.request(); }}
+                download={access.granted ? m.fileName || m.title : undefined}
+                className="flex items-center justify-between gap-2 p-3"
+              >
                         <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium flex items-center gap-2">
                           {m.icon ? <EmojiPreview value={m.icon} size={14} /> : <FileText size={14} style={{ color: t.accent }} />} {m.title}
                           {m.level && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-sm" style={{ backgroundColor: t.accentSoft, color: t.accentDeep }}>{levelChipLabel(m.level)}</span>}
                         </span>
-                        <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold">Descargar</span>
+                        <span style={{ ...sans, color: t.accent }} className="text-xs font-semibold flex items-center gap-1">
+                  {access.granted ? "Descargar" : <><Lock size={11} /> Con cuenta</>}
+                </span>
                       </a>
                     )}
                   </li>
@@ -1026,7 +1067,7 @@ function TemarioView({ materials, track, setView, currentUser }) {
 }
 
 function CategoryList({ type, exercises, materials, setView, focusId, track, submissions, currentUser }) {
-  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const { cfg, colors, serif, sans, trackInfo, access } = useTheme();
   const t = trackInfo(track);
   const userLevel = currentUser?.level;
   const list = useMemo(
@@ -1069,11 +1110,12 @@ function CategoryList({ type, exercises, materials, setView, focusId, track, sub
         </div>
       )}
 
+      <AccessBanner />
       <MaterialsSection materials={materials} type={type} track={track} userLevel={userLevel} />
 
       {list.length === 0 ? (
         <p style={{ ...sans, color: "#5B6472" }}>
-          Todavía no hay contenido en esta sección para el área {t.label.toLowerCase()}. Añádelo desde el panel de administración.
+          Todavía no hay contenido en esta sección para el área {t.label.toLowerCase()}.{access.granted ? " Añádelo desde el panel de administración." : ""}
         </p>
       ) : (
         <ul className="space-y-3">
@@ -1187,6 +1229,7 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
         </div>
       )}
 
+      <AccessBanner />
       {hasExam && (
         <div className="flex items-center gap-2 flex-wrap mb-5">
           {fixedExam ? (
@@ -1270,7 +1313,7 @@ function CambridgeCategory({ type, exercises, materials, setView, initialPart, t
                           {e.title ? <span style={{ color: "#5B6472" }} className="font-normal"> · {e.title}</span> : null}
                         </div>
                         <div style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-2 mt-1 flex-wrap">
-                          {realQuestions(e.questions).length > 0 && <span>{realQuestions(e.questions).length} preguntas</span>}
+                          {questionCountOf(e) > 0 && <span>{questionCountOf(e)} preguntas</span>}
                           {e.durationMinutes > 0 && (
                             <span className="flex items-center gap-1"><Clock size={12} /> {e.durationMinutes} min</span>
                           )}
@@ -1411,6 +1454,7 @@ function formatCountdown(totalSeconds) {
 // Cambridge "question 0": a solved example stored first in the questions list
 // with example: true. It is shown to the student but never counted or graded.
 const isExampleQ = (q) => !!q?.example;
+const questionCountOf = (e) => e.questionCount ?? (e.questions || []).filter((q) => !q?.example).length;
 const realQuestions = (qs) => (qs || []).filter((q) => !isExampleQ(q));
 
 function ExampleBlock({ q }) {
@@ -1832,6 +1876,7 @@ function ArticlesList({ articles, track, setView }) {
         </h2>
       </div>
       <GoldRule accent={t.accent} className="mb-8 max-w-xs" />
+      <AccessBanner />
       {list.length === 0 ? (
         <p style={{ ...sans, color: "#5B6472" }}>Todavía no hay artículos publicados en esta área.</p>
       ) : (
@@ -5790,26 +5835,45 @@ export default function App() {
   const [view, setView] = useState({ name: "home" });
   const [track, setTrackState] = useState("civil");
   const [boundaryKey, setBoundaryKey] = useState(0);
+  const [configReady, setConfigReady] = useState(false);
+  // "full" = real content (approved students and admins); "catalog" = only what
+  // visitors may see (titles, levels, covers…), with the content itself locked.
+  const [loadedMode, setLoadedMode] = useState(null);
+  const hasAccess = !!profile && (profile.status === "approved" || !!profile.is_admin);
+  const wantedMode = hasAccess ? "full" : "catalog";
 
   useEffect(() => {
     (async () => {
-      const [loadedExercises, loadedArticles, loadedMaterials, loadedReviews, siteConfig] = await Promise.all([
-        api.fetchExercises(),
-        api.fetchArticles(),
-        api.fetchMaterials(),
-        api.fetchReviews(),
-        api.fetchSiteConfig(),
-      ]);
-      setExercises(loadedExercises);
-      setArticles(loadedArticles);
-      setMaterials(loadedMaterials);
+      const [loadedReviews, siteConfig] = await Promise.all([api.fetchReviews(), api.fetchSiteConfig()]);
       setReviews(loadedReviews);
       setCfg(mergeConfig(siteConfig.config));
       setCustomLogo(siteConfig.customLogo);
       const preferredTrack = api.getPreferredTrack();
       if (preferredTrack === "civil" || preferredTrack === "military") setTrackState(preferredTrack);
+      setConfigReady(true);
     })();
   }, []);
+
+  // Exercises, articles and theory are loaded once we know who is looking, and
+  // reloaded when that changes (login, approval, logout).
+  useEffect(() => {
+    if (!authReady) return;
+    let cancelled = false;
+    (async () => {
+      const [ex, ar, ma] =
+        wantedMode === "full"
+          ? await Promise.all([api.fetchExercises(), api.fetchArticles(), api.fetchMaterials()])
+          : await Promise.all([api.fetchExerciseCatalog(), api.fetchArticleCatalog(), api.fetchMaterialCatalog()]);
+      if (cancelled) return;
+      setExercises(ex);
+      setArticles(ar);
+      setMaterials(ma);
+      setLoadedMode(wantedMode);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, wantedMode]);
 
   useEffect(() => {
     const { data: subscription } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -5885,7 +5949,15 @@ export default function App() {
     setBoundaryKey((k) => k + 1);
   }, []);
 
-  const theme = useMemo(() => ({ ...buildTheme(cfg, track), logoSrc: customLogo || LOGO_SRC }), [cfg, customLogo, track]);
+  const theme = useMemo(
+    () => ({
+      ...buildTheme(cfg, track),
+      logoSrc: customLogo || LOGO_SRC,
+      // Visitors browse everything but must sign in (and be approved) to open it.
+      access: { granted: hasAccess, request: () => setView({ name: "access" }) },
+    }),
+    [cfg, customLogo, track, hasAccess]
+  );
 
   const currentUser = profile;
 
@@ -5907,7 +5979,7 @@ export default function App() {
   // up twice in a row.
   const examAttemptToken = useMemo(() => uid(), [view]);
 
-  if (exercises === null || articles === null || materials === null || !authReady) {
+  if (exercises === null || articles === null || materials === null || !authReady || !configReady || loadedMode !== wantedMode) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: cfg.colors.bg }}>
         <img src={customLogo || LOGO_SRC} alt={cfg.siteName} className="h-14 w-auto opacity-80" />
@@ -5931,9 +6003,13 @@ export default function App() {
       profile && profile.status === "approved" ? (
         <Home exercises={exercises} articles={articles} reviews={reviews} setView={setView} track={track} currentUser={currentUser} />
       ) : (
-        <PublicHome articles={articles} reviews={reviews} setView={setView} track={track} />
+        <PublicHome exercises={exercises} articles={articles} reviews={reviews} setView={setView} track={track} />
       );
-  } else if (track !== "civil" && (view.name === "listening" || view.name === "reading")) {
+  } else if (view.name === "access") {
+    // Reached from any "sign in to open this" prompt; the gate below shows the
+    // sign-up / login / pending screen and lets approved students through.
+    content = <Home exercises={exercises} articles={articles} reviews={reviews} setView={setView} track={track} currentUser={currentUser} />;
+  } else if (hasAccess && track !== "civil" && (view.name === "listening" || view.name === "reading")) {
     const exercise = randomCategoryExerciseId ? exercises.find((e) => e.id === randomCategoryExerciseId) : null;
     const priorSubmission = currentUser && exercise ? submissions.find((s) => s.userId === currentUser.id && s.exerciseId === exercise.id) : null;
     content = exercise ? (
@@ -6023,7 +6099,9 @@ export default function App() {
     );
   }
 
-  const PUBLIC_VIEWS = ["home", "articles", "article-detail", "reviews"];
+  // Everything can be browsed; opening an exercise, article or the account
+  // screen ("detail", "article-detail", "access") needs an approved account.
+  const PUBLIC_VIEWS = ["home", "articles", "reviews", "temario", ...CATEGORY_KEYS];
   const gatedContent =
     view.name === "admin" || PUBLIC_VIEWS.includes(view.name) ? (
       content

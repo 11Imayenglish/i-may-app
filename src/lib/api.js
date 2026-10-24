@@ -136,6 +136,21 @@ export async function fetchExercises() {
   return (data || []).map(rowToExercise);
 }
 
+// What visitors (and students who are not approved yet) can see: titles, levels,
+// parts… but never the questions, texts, audio or files. The database function
+// only returns those safe columns, so the content itself stays locked by RLS.
+export async function fetchExerciseCatalog() {
+  const { data, error } = await supabase.rpc("exercise_catalog");
+  if (error) return [];
+  return (data || [])
+    .map((r) => ({
+      ...rowToExercise({ ...r, questions: [] }),
+      questionCount: r.question_count || 0,
+      locked: true,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 export async function insertExercise(ex) {
   const { data: minRow } = await supabase
     .from("exercises")
@@ -220,6 +235,13 @@ export async function fetchArticles() {
   const { data, error } = await supabase.from("articles").select("*").order("date_added", { ascending: false });
   if (error) throw error;
   return (data || []).map(rowToArticle);
+}
+
+export async function fetchArticleCatalog() {
+  const { data, error } = await supabase.rpc("article_catalog");
+  // Before the catalog function exists, articles are still readable directly.
+  if (error) return fetchArticles().catch(() => []);
+  return (data || []).map((r) => ({ ...rowToArticle({ ...r, body: "" }), locked: true }));
 }
 
 export async function insertArticle(a) {
@@ -312,6 +334,12 @@ export async function fetchMaterials() {
   const { data, error } = await supabase.from("materials").select("*").order("date_added", { ascending: false });
   if (error) throw error;
   return (data || []).map(rowToMaterial);
+}
+
+export async function fetchMaterialCatalog() {
+  const { data, error } = await supabase.rpc("material_catalog");
+  if (error) return [];
+  return (data || []).map((r) => ({ ...rowToMaterial({ ...r, body: "", file_url: "", file_name: "" }), locked: true }));
 }
 
 export async function insertMaterial(m) {

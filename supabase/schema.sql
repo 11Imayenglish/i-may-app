@@ -213,10 +213,10 @@ create policy "exercises: admin updates" on exercises for update
 create policy "exercises: admin deletes" on exercises for delete
   using (is_admin());
 
--- Articles are public — they're the marketing/blog content shown to visitors
--- before they have an account.
-create policy "articles: public read" on articles for select
-  using (true);
+-- Articles: the full text is only for approved students and admins. Visitors
+-- see the list (title, cover, summary) through article_catalog() below.
+create policy "articles: read if approved or admin" on articles for select
+  using (is_approved() or is_admin());
 create policy "articles: admin writes" on articles for insert
   with check (is_admin());
 create policy "articles: admin updates" on articles for update
@@ -267,6 +267,50 @@ create policy "writing_drafts: insert own" on writing_drafts for insert
   with check (user_id = auth.uid());
 create policy "writing_drafts: update own" on writing_drafts for update
   using (user_id = auth.uid());
+
+-- ------------------------------------------------------------------
+-- Public catalogs: visitors can SEE what exists (titles, levels, covers…) but
+-- never the content itself (questions, texts, audio, files, article bodies).
+-- These functions bypass RLS but only return those safe columns.
+-- ------------------------------------------------------------------
+create or replace function exercise_catalog()
+returns table (id uuid, type text, track text, title text, level text, part text, icon text,
+               duration_minutes int, min_words int, date_added timestamptz, sort_order double precision, question_count int)
+language sql
+security definer set search_path = public
+stable
+as $$
+  select e.id, e.type, e.track, e.title, e.level, e.part, coalesce(to_jsonb(e) ->> 'icon', ''),
+         e.duration_minutes, e.min_words, e.date_added, e.sort_order,
+         (select count(*)::int from jsonb_array_elements(e.questions) q
+           where coalesce((q ->> 'example')::boolean, false) = false)
+  from exercises e;
+$$;
+
+create or replace function material_catalog()
+returns table (id uuid, track text, category text, kind text, title text, level text, icon text, date_added timestamptz)
+language sql
+security definer set search_path = public
+stable
+as $$
+  select m.id, m.track, m.category, m.kind, m.title, m.level, coalesce(to_jsonb(m) ->> 'icon', ''), m.date_added
+  from materials m;
+$$;
+
+create or replace function article_catalog()
+returns table (id uuid, track text, title text, cover_image_url text, excerpt text, icon text,
+               cover_position text, cover_height int, date_added timestamptz)
+language sql
+security definer set search_path = public
+stable
+as $$
+  select a.id, a.track, a.title, a.cover_image_url, a.excerpt, a.icon, a.cover_position, a.cover_height, a.date_added
+  from articles a;
+$$;
+
+grant execute on function exercise_catalog() to anon, authenticated;
+grant execute on function material_catalog() to anon, authenticated;
+grant execute on function article_catalog() to anon, authenticated;
 
 -- ------------------------------------------------------------------
 -- Storage bucket for uploaded images (logo, banners, etc.)
