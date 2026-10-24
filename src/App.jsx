@@ -119,6 +119,13 @@ const DEFAULT_CONFIG = {
   icons: { grammar: "", listening: "", reading: "", writing: "" },
   trackIcons: { civil: "", military: "" },
   articlesLabel: "Artículos",
+  // Line under each category card on the home page; {n} is the number of exercises.
+  categoryCounts: {
+    grammar: { one: "{n} ejercicio disponible", many: "{n} ejercicios disponibles" },
+    listening: { one: "{n} audición disponible", many: "{n} audiciones disponibles" },
+    reading: { one: "{n} lectura disponible", many: "{n} lecturas disponibles" },
+    writing: { one: "{n} redacción disponible", many: "{n} redacciones disponibles" },
+  },
   homeLayout: ["intro", "categories", "articles", "reviews"],
   homeVisibility: { intro: true, categories: true, articles: true, reviews: true },
   emojiLibrary: [],
@@ -169,6 +176,9 @@ function mergeConfig(saved) {
     colors: { ...DEFAULT_CONFIG.colors, ...(s.colors || {}) },
     categoryLabels: { ...DEFAULT_CONFIG.categoryLabels, ...(s.categoryLabels || {}) },
     icons: { ...DEFAULT_CONFIG.icons, ...(s.icons || {}) },
+    categoryCounts: Object.fromEntries(
+      Object.keys(DEFAULT_CONFIG.categoryCounts).map((key) => [key, { ...DEFAULT_CONFIG.categoryCounts[key], ...(s.categoryCounts?.[key] || {}) }])
+    ),
     trackIcons: { ...DEFAULT_CONFIG.trackIcons, ...(s.trackIcons || {}) },
     homeVisibility: { ...DEFAULT_CONFIG.homeVisibility, ...(s.homeVisibility || {}) },
     homeLayout:
@@ -200,6 +210,11 @@ function alignToJustify(align) {
 
 const CATEGORY_KEYS = ["grammar", "listening", "reading", "writing"];
 const CATEGORY_ICON_COMPONENTS = { grammar: ScrollText, listening: Headphones, reading: BookOpen, writing: PenSquare };
+// "{n} audiciones disponibles" etc., editable from the admin panel (Tarjetas tab).
+function cardCountText(cfg, key, n) {
+  const pair = cfg.categoryCounts[key];
+  return (n === 1 ? pair.one : pair.many).replace(/\{n\}/g, String(n));
+}
 const CATEGORY_NOUNS = { grammar: "ejercicio", listening: "audición", reading: "lectura", writing: "redacción" };
 const LEVELS_BY_TRACK = {
   civil: ["A2", "B1", "B2", "C1"],
@@ -767,8 +782,7 @@ function CategoriesBlock({ exercises, setView, track, userLevel }) {
               {cfg.categoryLabels[key]}
             </div>
             <div style={{ ...sans, color: "#5B6472" }} className="text-sm">
-              {counts[key] || 0} {CATEGORY_NOUNS[key]}
-              {(counts[key] || 0) === 1 ? "" : "s"} disponible{(counts[key] || 0) === 1 ? "" : "s"}
+              {cardCountText(cfg, key, counts[key] || 0)}
             </div>
           </button>
         ))}
@@ -4575,20 +4589,92 @@ function TextsTab({ cfg, updateConfig }) {
               Párrafo de introducción
               <textarea value={cfg.copy[trackKey].paragraph} onChange={(e) => updateTrackCopy(trackKey, "paragraph", e.target.value)} rows={3} className="mt-1 w-full border px-3 py-2" style={{ borderColor: cfg.colors.line }} />
             </label>
-            <label className="text-sm block" style={sans}>
-              Cómo y a dónde entregar el Writing (se muestra fijo arriba de todo, siempre, al entrar en Writing)
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Admin — tab: Tarjetas (texto bajo cada categoría + entrega del Writing) */
+/* ------------------------------------------------------------------ */
+const WRITING_SUBMISSION_EXAMPLE =
+  "Correo para mandar los documentos: correcciones@imayenglish.com\n\nRecuerda siempre rellenar el mínimo de palabras en cada ejercicio. Revisa siempre tu redacción. Las correcciones se suelen entregar siempre entre 1 y 7 días naturales desde la entrega del documento.";
+
+function CardsTab({ cfg, updateConfig }) {
+  const { sans, serif } = useTheme();
+  function updateCount(key, field, value) {
+    updateConfig({ categoryCounts: { ...cfg.categoryCounts, [key]: { ...cfg.categoryCounts[key], [field]: value } } });
+  }
+  function updateSubmission(trackKey, value) {
+    updateConfig({ copy: { ...cfg.copy, [trackKey]: { ...cfg.copy[trackKey], writingSubmission: value } } });
+  }
+  return (
+    <div className="max-w-2xl space-y-10">
+      <div>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">Texto bajo cada tarjeta de la portada</h4>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">
+          Es la línea que aparece debajo de Gramática, Listening, Reading y Writing en la portada. Escribe <code>{"{n}"}</code> donde
+          quieras que salga el número de ejercicios. Hay dos versiones: cuando hay exactamente 1, y cuando hay 0 o varios.
+        </p>
+        <div className="space-y-5">
+          {CATEGORY_KEYS.map((key) => (
+            <div key={key} className="p-4 border" style={{ borderColor: cfg.colors.line }}>
+              <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold mb-2">{cfg.categoryLabels[key]}</div>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="text-xs block" style={sans}>
+                  Cuando hay 1
+                  <input value={cfg.categoryCounts[key].one} onChange={(e) => updateCount(key, "one", e.target.value)} className="mt-1 w-full border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
+                </label>
+                <label className="text-xs block" style={sans}>
+                  Cuando hay 0 o varios
+                  <input value={cfg.categoryCounts[key].many} onChange={(e) => updateCount(key, "many", e.target.value)} className="mt-1 w-full border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
+                </label>
+              </div>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2">
+                Se verá así: «{cardCountText(cfg, key, 1)}» · «{cardCountText(cfg, key, 3)}»
+              </p>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={() => updateConfig({ categoryCounts: DEFAULT_CONFIG.categoryCounts })}
+          className="mt-3 text-xs underline"
+          style={{ ...sans, color: "#5B6472" }}
+        >
+          Restablecer estos textos
+        </button>
+      </div>
+
+      <div>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold mb-1">Cómo entregar el Writing</h4>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm mb-4">
+          Este texto aparece arriba de todo al entrar en Writing, en cada área. Úsalo para indicar a qué correo y cómo entregar la
+          redacción. Si lo dejas vacío, no se muestra nada.
+        </p>
+        <div className="space-y-5">
+          {["civil", "military"].map((trackKey) => (
+            <label key={trackKey} className="text-sm block" style={sans}>
+              Writing — {cfg.copy[trackKey].label}
               <textarea
                 value={cfg.copy[trackKey].writingSubmission}
-                onChange={(e) => updateTrackCopy(trackKey, "writingSubmission", e.target.value)}
-                rows={3}
+                onChange={(e) => updateSubmission(trackKey, e.target.value)}
+                rows={5}
                 placeholder="Ej. Envía tu redacción en Word a nombre@imayenglish.com con el asunto 'Writing + tu nombre'."
                 className="mt-1 w-full border px-3 py-2"
                 style={{ borderColor: cfg.colors.line }}
               />
+              {!cfg.copy[trackKey].writingSubmission.trim() && (
+                <button type="button" onClick={() => updateSubmission(trackKey, WRITING_SUBMISSION_EXAMPLE)} className="mt-1 text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                  Rellenar con el mismo texto que Militar
+                </button>
+              )}
             </label>
-          </div>
+          ))}
         </div>
-      ))}
+      </div>
     </div>
   );
 }
@@ -5728,6 +5814,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
     { key: "appearance", label: "Apariencia", icon: Palette },
     { key: "categories", label: "Categorías", icon: Smile },
     { key: "emojis", label: "Emojis", icon: Sparkles },
+    { key: "cards", label: "Tarjetas y Writing", icon: LayoutGrid },
     { key: "texts", label: "Textos", icon: TypeIcon },
     { key: "access", label: "Acceso", icon: KeyRound },
     { key: "advanced", label: "Avanzado", icon: RotateCcw },
@@ -5770,6 +5857,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
       {tab === "appearance" && <AppearanceTab cfg={cfg} updateConfig={updateConfig} customLogo={customLogo} onSetCustomLogo={onSetCustomLogo} onClearCustomLogo={onClearCustomLogo} />}
       {tab === "categories" && <CategoriesTab cfg={cfg} updateConfig={updateConfig} />}
       {tab === "emojis" && <EmojisTab cfg={cfg} updateConfig={updateConfig} />}
+      {tab === "cards" && <CardsTab cfg={cfg} updateConfig={updateConfig} />}
       {tab === "texts" && <TextsTab cfg={cfg} updateConfig={updateConfig} />}
       {tab === "access" && <AccessTab profile={profile} />}
       {tab === "advanced" && <AdvancedTab cfg={cfg} onReset={resetConfig} />}
