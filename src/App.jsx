@@ -1856,12 +1856,8 @@ function ArticleDetail({ article, setView }) {
         <img
           src={article.coverImageUrl}
           alt=""
-          className="w-full object-cover mb-6 border"
-          style={{
-            height: article.coverHeight || cfg.contentSizes.articleDetailCover,
-            objectPosition: article.coverPosition || "center",
-            borderColor: colors.line,
-          }}
+          className="max-w-full h-auto mx-auto mb-6 border"
+          style={{ borderColor: colors.line }}
         />
       )}
       <div style={{ ...sans, color: "#5B6472" }} className="text-xs mb-2 flex items-center gap-1">
@@ -5082,7 +5078,7 @@ function ArticlesTab({ articles, setArticles, track }) {
                 style={{ borderColor: cfg.colors.line, objectPosition: form.coverPosition }}
               />
               <div className="text-sm" style={sans}>
-                Posición de la imagen (qué parte se ve al recortarla)
+                Posición de la imagen en la tarjeta (qué parte se ve al recortarla). Dentro del artículo se ve completa.
                 <div className="flex items-center border rounded-full p-0.5 mt-1 w-fit" style={{ borderColor: cfg.colors.line }}>
                   {[["top", "Arriba"], ["center", "Centro"], ["bottom", "Abajo"]].map(([key, lbl]) => (
                     <button
@@ -5096,29 +5092,6 @@ function ArticlesTab({ articles, setArticles, track }) {
                     </button>
                   ))}
                 </div>
-              </div>
-              <div className="text-sm" style={sans}>
-                <label className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={form.coverHeight != null}
-                    onChange={(e) => updateField("coverHeight", e.target.checked ? cfg.contentSizes.articleDetailCover : null)}
-                  />
-                  Usar un tamaño distinto al general en la página del artículo completo
-                </label>
-                {form.coverHeight != null && (
-                  <div className="flex items-center gap-3 mt-2">
-                    <input
-                      type="range"
-                      min={100}
-                      max={600}
-                      value={form.coverHeight}
-                      onChange={(e) => updateField("coverHeight", Number(e.target.value))}
-                      className="w-40"
-                    />
-                    <span style={{ color: "#5B6472" }} className="text-xs">{form.coverHeight}px</span>
-                  </div>
-                )}
               </div>
             </>
           )}
@@ -5615,15 +5588,6 @@ function LayoutTab({ cfg, updateConfig }) {
           onSizeChange={(v) => updateContentSize("articleCardCover", v)}
           min={60}
           max={320}
-          colors={cfg.colors}
-          sans={sans}
-        />
-        <SizeControlRow
-          label="Portada de artículo (artículo completo)"
-          size={cfg.contentSizes.articleDetailCover}
-          onSizeChange={(v) => updateContentSize("articleDetailCover", v)}
-          min={100}
-          max={600}
           colors={cfg.colors}
           sans={sans}
         />
