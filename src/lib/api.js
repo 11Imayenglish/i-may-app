@@ -69,6 +69,46 @@ export async function fetchAllProfiles() {
   return (data || []).map(rowToProfile);
 }
 
+// Private teacher notes about a student (city, job, goal, comments…). Only
+// admins can read or write them: the table has no policy for students.
+function rowToStudentNote(r) {
+  return {
+    city: r.city || "",
+    occupation: r.occupation || "",
+    age: r.age ?? "",
+    maritalStatus: r.marital_status || "",
+    hasChildren: r.has_children || "",
+    childrenDetail: r.children_detail || "",
+    goal: r.goal || "",
+    comments: r.comments || "",
+    updatedAt: r.updated_at || null,
+  };
+}
+
+export async function fetchStudentNote(userId) {
+  const { data, error } = await supabase.from("student_notes").select("*").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return data ? rowToStudentNote(data) : null;
+}
+
+export async function saveStudentNote(userId, n) {
+  const row = {
+    user_id: userId,
+    city: n.city.trim(),
+    occupation: n.occupation.trim(),
+    age: n.age === "" || n.age == null ? null : Number(n.age),
+    marital_status: n.maritalStatus,
+    has_children: n.hasChildren,
+    children_detail: n.childrenDetail.trim(),
+    goal: n.goal.trim(),
+    comments: n.comments,
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from("student_notes").upsert(row, { onConflict: "user_id" }).select().single();
+  if (error) throw error;
+  return rowToStudentNote(data);
+}
+
 export async function updateProfileStatus(id, status) {
   const { error } = await supabase.from("profiles").update({ status }).eq("id", id);
   if (error) throw error;

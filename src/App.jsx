@@ -4770,9 +4770,208 @@ function PlanBadge({ plan, planStartDate, colors, sans }) {
   );
 }
 
-function StudentsTab({ users, setUsers, currentAdminId }) {
+const MARITAL_OPTIONS = ["Soltero/a", "Casado/a", "Pareja de hecho", "Divorciado/a", "Viudo/a"];
+
+function emptyStudentNote() {
+  return { city: "", occupation: "", age: "", maritalStatus: "", hasChildren: "", childrenDetail: "", goal: "", comments: "" };
+}
+
+// Teacher-only file for one student: private notes + what they have done on the platform.
+function StudentFicha({ user, submissions, exercises, onBack }) {
+  const { cfg, sans, serif } = useTheme();
+  const [note, setNote] = useState(emptyStudentNote());
+  const [loaded, setLoaded] = useState(false);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setMessage("");
+    api
+      .fetchStudentNote(user.id)
+      .then((n) => {
+        if (!cancelled) setNote(n ? { ...emptyStudentNote(), ...n } : emptyStudentNote());
+      })
+      .catch(() => {
+        if (!cancelled) setMessage("No se pudieron cargar las notas. Comprueba que has ejecutado el SQL de la ficha de alumnos.");
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.id]);
+
+  function setField(field, value) {
+    setNote((n) => ({ ...n, [field]: value }));
+  }
+
+  async function handleSave(e) {
+    e.preventDefault();
+    setBusy(true);
+    setMessage("");
+    try {
+      const saved = await api.saveStudentNote(user.id, note);
+      setNote({ ...emptyStudentNote(), ...saved });
+      setMessage("Ficha guardada.");
+    } catch {
+      setMessage("No se pudo guardar. Comprueba que has ejecutado el SQL de la ficha de alumnos.");
+    }
+    setBusy(false);
+  }
+
+  const mine = useMemo(
+    () => submissions.filter((s) => s.userId === user.id).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
+    [submissions, user.id]
+  );
+  const pct = (list) => (list.length ? Math.round((list.reduce((acc, s) => acc + (s.total ? s.score / s.total : 0), 0) / list.length) * 100) : 0);
+  const byCategory = CATEGORY_KEYS.map((key) => {
+    const done = mine.filter((s) => s.exerciseType === key);
+    const available = exercises.filter((e) => e.type === key && matchesLevel(e.level, user.level)).length;
+    return { key, done, available };
+  });
+  const field = "mt-1 w-full border px-3 py-2 text-sm";
+  const line = { borderColor: cfg.colors.line };
+
+  return (
+    <div className="max-w-3xl space-y-8">
+      <button onClick={onBack} className="flex items-center gap-1 text-sm" style={{ ...sans, color: "#5B6472" }}>
+        <ChevronLeft size={16} /> Volver a la lista de alumnos
+      </button>
+
+      <div>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-xl font-semibold">{user.name || "(sin nombre)"}</h4>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-sm">
+          {user.email} · {user.status === "approved" ? "Aprobado" : user.status === "rejected" ? "Rechazado" : "Pendiente"}
+          {user.level ? ` · Nivel ${user.level}` : ""} · Se apuntó el {formatDate(user.createdAt)}
+        </p>
+      </div>
+
+      <form onSubmit={handleSave} className="space-y-4 p-4 border" style={{ ...line, backgroundColor: cfg.colors.card }}>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <span style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-semibold">Ficha personal</span>
+          <span style={{ ...sans, color: "#5B6472" }} className="text-xs flex items-center gap-1">
+            <Lock size={12} /> Solo la ves tú. El alumno nunca la ve.
+          </span>
+        </div>
+        {!loaded ? (
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm">Cargando…</p>
+        ) : (
+          <>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <label className="text-sm block" style={sans}>
+                Ciudad de donde viene
+                <input value={note.city} onChange={(e) => setField("city", e.target.value)} className={field} style={line} />
+              </label>
+              <label className="text-sm block" style={sans}>
+                A qué se dedica
+                <input value={note.occupation} onChange={(e) => setField("occupation", e.target.value)} className={field} style={line} />
+              </label>
+              <label className="text-sm block" style={sans}>
+                Edad
+                <input type="number" min={0} max={120} value={note.age} onChange={(e) => setField("age", e.target.value)} className={field} style={line} />
+              </label>
+              <label className="text-sm block" style={sans}>
+                Estado civil
+                <select value={note.maritalStatus} onChange={(e) => setField("maritalStatus", e.target.value)} className={field} style={line}>
+                  <option value="">Sin indicar</option>
+                  {MARITAL_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
+                </select>
+              </label>
+              <label className="text-sm block" style={sans}>
+                ¿Tiene hijos?
+                <select value={note.hasChildren} onChange={(e) => setField("hasChildren", e.target.value)} className={field} style={line}>
+                  <option value="">Sin indicar</option>
+                  <option value="Sí">Sí</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+              <label className="text-sm block" style={sans}>
+                Hijos: cuántos / edades (opcional)
+                <input value={note.childrenDetail} onChange={(e) => setField("childrenDetail", e.target.value)} placeholder="Ej. 2 hijos (8 y 5 años)" className={field} style={line} />
+              </label>
+            </div>
+            <label className="text-sm block" style={sans}>
+              Objetivo
+              <textarea value={note.goal} onChange={(e) => setField("goal", e.target.value)} rows={2} placeholder="Ej. Sacar el SLP3 en la convocatoria de marzo" className={field} style={line} />
+            </label>
+            <label className="text-sm block" style={sans}>
+              Comentarios
+              <textarea value={note.comments} onChange={(e) => setField("comments", e.target.value)} rows={5} className={field} style={line} />
+            </label>
+            <div className="flex items-center gap-3">
+              <button type="submit" disabled={busy} className="px-5 py-2.5 text-sm font-semibold rounded-sm disabled:opacity-50" style={{ ...sans, backgroundColor: cfg.colors.ink, color: cfg.colors.bg }}>
+                {busy ? "Guardando…" : "Guardar ficha"}
+              </button>
+              {note.updatedAt && <span style={{ ...sans, color: "#5B6472" }} className="text-xs">Última edición: {formatDate(note.updatedAt)}</span>}
+            </div>
+          </>
+        )}
+        {message && <p style={{ ...sans, color: message.startsWith("Ficha guardada") ? cfg.colors.success : cfg.colors.error }} className="text-xs">{message}</p>}
+      </form>
+
+      <div className="space-y-4">
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold">Progreso en la plataforma</h4>
+        {mine.length === 0 ? (
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no ha completado ningún ejercicio.</p>
+        ) : (
+          <>
+            <p style={{ ...sans, color: cfg.colors.ink }} className="text-sm">
+              <strong>{mine.length}</strong> ejercicio{mine.length === 1 ? "" : "s"} completado{mine.length === 1 ? "" : "s"} · media <strong>{pct(mine)}%</strong> · último: {formatDate(mine[0].completedAt)}
+            </p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              {byCategory.map(({ key, done, available }) => (
+                <div key={key} className="p-3 border" style={{ ...line, backgroundColor: cfg.colors.card }}>
+                  <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium">{cfg.categoryLabels[key]}</div>
+                  <div style={{ ...sans, color: "#5B6472" }} className="text-xs mt-0.5">
+                    {done.length} de {Math.max(available, done.length)} hechos{done.length ? ` · media ${pct(done)}%` : ""}
+                  </div>
+                  <div className="h-1.5 mt-2 rounded-full" style={{ backgroundColor: cfg.colors.line }}>
+                    <div className="h-full rounded-full" style={{ width: `${Math.min(100, Math.round((done.length / Math.max(available, done.length, 1)) * 100))}%`, backgroundColor: cfg.colors.success }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr style={{ ...sans, color: "#5B6472" }} className="text-left text-xs uppercase">
+                    <th className="pb-2 pr-3">Ejercicio</th>
+                    <th className="pb-2 pr-3">Tipo</th>
+                    <th className="pb-2 pr-3">Resultado</th>
+                    <th className="pb-2">Fecha</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mine.map((s) => (
+                    <tr key={s.id} className="border-t" style={line}>
+                      <td style={{ ...sans, color: cfg.colors.ink }} className="py-2 pr-3">{s.exerciseTitle}{s.level ? <span style={{ color: "#5B6472" }}> · {s.level}</span> : null}</td>
+                      <td style={{ ...sans, color: "#5B6472" }} className="py-2 pr-3">{cfg.categoryLabels[s.exerciseType] || s.exerciseType}</td>
+                      <td style={{ ...sans, color: cfg.colors.ink }} className="py-2 pr-3 font-semibold">
+                        {s.score}/{s.total} ({s.total ? Math.round((s.score / s.total) * 100) : 0}%)
+                      </td>
+                      <td style={{ ...sans, color: "#5B6472" }} className="py-2">{formatDate(s.completedAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
+              De cada ejercicio se guarda su último intento.
+            </p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function StudentsTab({ users, setUsers, currentAdminId, submissions, exercises }) {
   const { cfg, sans, serif } = useTheme();
   const [filter, setFilter] = useState("pending");
+  const [openId, setOpenId] = useState(null);
   const [linkNotice, setLinkNotice] = useState({});
   const visibleUsers = users.filter((u) => u.id !== currentAdminId);
 
@@ -4826,6 +5025,11 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
     }
   }
 
+  const openUser = openId ? users.find((u) => u.id === openId) : null;
+  if (openUser) {
+    return <StudentFicha user={openUser} submissions={submissions || []} exercises={exercises || []} onBack={() => setOpenId(null)} />;
+  }
+
   const pendingCount = visibleUsers.filter((u) => u.status === "pending").length;
   const filters = [
     { key: "pending", label: `Pendientes (${pendingCount})` },
@@ -4869,7 +5073,9 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
             <li key={u.id} className="flex flex-col gap-3 p-3 border" style={{ borderColor: cfg.colors.line, backgroundColor: cfg.colors.card }}>
               <div className="flex items-center justify-between gap-3 flex-wrap">
                 <div className="min-w-0">
-                  <div style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium truncate">{u.name || "(sin nombre)"}</div>
+                  <button onClick={() => setOpenId(u.id)} style={{ ...sans, color: cfg.colors.ink }} className="text-sm font-medium truncate block max-w-full text-left underline decoration-dotted" title="Abrir la ficha del alumno">
+                    {u.name || "(sin nombre)"}
+                  </button>
                   <div style={{ ...sans, color: "#5B6472" }} className="text-xs truncate flex items-center gap-1">
                     {u.email} <span className="mx-1">·</span> <CalendarDays size={11} /> Se apuntó el {formatDate(u.createdAt)}
                   </div>
@@ -4890,6 +5096,13 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
                       Revocar
                     </button>
                   )}
+                  <button
+                    onClick={() => setOpenId(u.id)}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-sm border"
+                    style={{ ...sans, borderColor: cfg.colors.ink, color: cfg.colors.ink }}
+                  >
+                    Ver ficha
+                  </button>
                   <button
                     onClick={() => sendAccessLink(u)}
                     disabled={linkNotice[u.id]?.busy}
@@ -5887,7 +6100,7 @@ function AdminPanel({ exercises, setExercises, articles, setArticles, materials,
       {tab === "articles" && <ArticlesTab articles={articles} setArticles={setArticles} track={track} />}
       {tab === "reviews" && <ReviewsTab reviews={reviews} setReviews={setReviews} />}
       {tab === "materials" && <MaterialsTab materials={materials} setMaterials={setMaterials} track={track} />}
-      {tab === "students" && <StudentsTab users={users} setUsers={setUsers} currentAdminId={profile?.id} />}
+      {tab === "students" && <StudentsTab users={users} setUsers={setUsers} currentAdminId={profile?.id} submissions={submissions} exercises={exercises} />}
       {tab === "progress" && <ProgressTab users={users} submissions={submissions} />}
       {tab === "layout" && <LayoutTab cfg={cfg} updateConfig={updateConfig} />}
       {tab === "appearance" && <AppearanceTab cfg={cfg} updateConfig={updateConfig} customLogo={customLogo} onSetCustomLogo={onSetCustomLogo} onClearCustomLogo={onClearCustomLogo} />}

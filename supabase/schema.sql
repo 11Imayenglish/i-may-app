@@ -72,6 +72,20 @@ create table if not exists materials (
   icon text default ''
 );
 
+-- Private notes the teacher keeps about each student. Admin-only (see policies).
+create table if not exists student_notes (
+  user_id uuid primary key references profiles(id) on delete cascade,
+  city text default '',
+  occupation text default '',
+  age int,
+  marital_status text default '',
+  has_children text default '',
+  children_detail text default '',
+  goal text default '',
+  comments text default '',
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists submissions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
@@ -193,6 +207,7 @@ alter table submissions enable row level security;
 alter table writing_drafts enable row level security;
 alter table site_config enable row level security;
 alter table reviews enable row level security;
+alter table student_notes enable row level security;
 
 -- profiles
 create policy "profiles: read own or admin reads all" on profiles for select
@@ -250,6 +265,17 @@ create policy "site_config: public read" on site_config for select
 create policy "site_config: admin writes" on site_config for insert
   with check (is_admin());
 create policy "site_config: admin updates" on site_config for update
+  using (is_admin());
+
+-- student_notes: admins only. Students have no policy, so they can never read
+-- or write what the teacher notes about them.
+create policy "student_notes: admin reads" on student_notes for select
+  using (is_admin());
+create policy "student_notes: admin inserts" on student_notes for insert
+  with check (is_admin());
+create policy "student_notes: admin updates" on student_notes for update
+  using (is_admin());
+create policy "student_notes: admin deletes" on student_notes for delete
   using (is_admin());
 
 -- submissions: a student manages their own rows; admin reads all
