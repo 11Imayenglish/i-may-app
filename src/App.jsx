@@ -1946,8 +1946,8 @@ function AuthScreen({ mode, setMode, form, setForm, error, info, busy, onSignup,
   const subtitle = isReset
     ? "Introduce tu email y te enviaremos un enlace para elegir una contraseña nueva."
     : isSignup
-    ? "Después de registrarte, un administrador debe darte acceso antes de que puedas ver el contenido."
-    : "Introduce tus datos para continuar con tu formación.";
+    ? "Solo para alumnos nuevos. Si ya tienes cuenta, no te registres otra vez: inicia sesión. Después de registrarte, un administrador debe darte acceso."
+    : "Si ya estás aprobado, entra con tu email y tu contraseña de siempre.";
   const onSubmit = isReset ? onResetRequest : isSignup ? onSignup : onLogin;
 
   return (
@@ -2171,14 +2171,18 @@ function RejectedScreen({ user, onLogout }) {
 
 function authErrorMessage(err) {
   const msg = err?.message || "";
-  if (/invalid login credentials/i.test(msg)) return "Email o contraseña incorrectos.";
+  if (/invalid login credentials/i.test(msg))
+    return "Email o contraseña incorrectos. Si no recuerdas la contraseña (o te registraste dos veces), pulsa «¿Olvidaste tu contraseña?» y elige una nueva.";
+  if (/email not confirmed/i.test(msg)) return "Tu email aún no está confirmado. Revisa tu correo (y la carpeta de spam) y pulsa el enlace de confirmación.";
   if (/already registered|already exists/i.test(msg)) return "Ya existe una cuenta con ese email. Prueba a iniciar sesión.";
   if (/password/i.test(msg) && /least|short/i.test(msg)) return "La contraseña es demasiado corta.";
   return msg || "Algo ha fallado. Inténtalo de nuevo.";
 }
 
 function StudentAuthGate({ profile, onLogout, children }) {
-  const [mode, setMode] = useState("signup");
+  // Login first: most people arriving here already have an approved account, and
+  // registering a second time does not give them access (or a new password).
+  const [mode, setMode] = useState("login");
   const [form, setForm] = useState({ name: "", email: "", password: "", confirm: "" });
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
@@ -2199,7 +2203,11 @@ function StudentAuthGate({ profile, onLogout, children }) {
     setBusy(true);
     try {
       const result = await api.signUp({ name: form.name.trim(), email: form.email.trim().toLowerCase(), password: form.password });
-      if (!result.session) {
+      if (result.user && Array.isArray(result.user.identities) && result.user.identities.length === 0) {
+        // Supabase hides whether an email exists; this shape means it already does.
+        setInfo("Ese email ya tiene una cuenta. No hace falta registrarse otra vez: inicia sesión, o pulsa «¿Olvidaste tu contraseña?» si no la recuerdas.");
+        setMode("login");
+      } else if (!result.session) {
         setInfo("Cuenta creada. Revisa tu email para confirmar la cuenta y luego inicia sesión.");
         setMode("login");
       }
