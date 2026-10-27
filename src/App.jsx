@@ -4773,7 +4773,21 @@ function PlanBadge({ plan, planStartDate, colors, sans }) {
 function StudentsTab({ users, setUsers, currentAdminId }) {
   const { cfg, sans, serif } = useTheme();
   const [filter, setFilter] = useState("pending");
+  const [linkNotice, setLinkNotice] = useState({});
   const visibleUsers = users.filter((u) => u.id !== currentAdminId);
+
+  // Sends the student an email with a link to choose a new password. Their
+  // approval is not touched: it is the fix for "I can't log in".
+  async function sendAccessLink(u) {
+    if (!u.email) return;
+    setLinkNotice((n) => ({ ...n, [u.id]: { busy: true } }));
+    try {
+      await api.requestPasswordReset(u.email.trim().toLowerCase());
+      setLinkNotice((n) => ({ ...n, [u.id]: { ok: true, text: `Enlace enviado a ${u.email}. Dile que mire también el spam.` } }));
+    } catch {
+      setLinkNotice((n) => ({ ...n, [u.id]: { ok: false, text: "No se pudo enviar el correo. Inténtalo de nuevo en unos minutos." } }));
+    }
+  }
 
   async function setStatus(id, status) {
     try {
@@ -4876,11 +4890,25 @@ function StudentsTab({ users, setUsers, currentAdminId }) {
                       Revocar
                     </button>
                   )}
+                  <button
+                    onClick={() => sendAccessLink(u)}
+                    disabled={linkNotice[u.id]?.busy}
+                    className="px-2.5 py-1 text-xs font-semibold rounded-sm border flex items-center gap-1 disabled:opacity-50"
+                    style={{ ...sans, borderColor: cfg.colors.ink, color: cfg.colors.ink }}
+                    title="Le llega un correo con un enlace para elegir una contraseña nueva. Su aprobación no cambia."
+                  >
+                    <KeyRound size={12} /> {linkNotice[u.id]?.busy ? "Enviando…" : "Enviar enlace de acceso"}
+                  </button>
                   <button onClick={() => handleDelete(u.id)} style={{ color: cfg.colors.error }} title="Eliminar cuenta">
                     <Trash2 size={15} />
                   </button>
                 </div>
               </div>
+              {linkNotice[u.id]?.text && (
+                <p style={{ ...sans, color: linkNotice[u.id].ok ? cfg.colors.success : cfg.colors.error }} className="text-xs">
+                  {linkNotice[u.id].text}
+                </p>
+              )}
 
               <div className="flex items-center gap-3 flex-wrap pt-2 border-t" style={{ borderColor: cfg.colors.line }}>
                 <label className="text-xs flex items-center gap-1.5" style={sans}>
