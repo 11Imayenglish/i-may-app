@@ -6,6 +6,7 @@ import {
   ScrollText,
   Newspaper,
   Settings,
+  UserCircle,
   Play,
   Check,
   X,
@@ -492,8 +493,8 @@ function GoldRule({ accent, className = "" }) {
 /* ------------------------------------------------------------------ */
 /*  Navbar                                                              */
 /* ------------------------------------------------------------------ */
-function Navbar({ view, setView, track, setTrack }) {
-  const { cfg, colors, serif, sans, trackInfo, logoSrc } = useTheme();
+function Navbar({ view, setView, track, setTrack, currentUser }) {
+  const { cfg, colors, serif, sans, trackInfo, logoSrc, access } = useTheme();
   const items = CATEGORY_KEYS.map((k) => ({ key: k, label: cfg.categoryLabels[k] }));
   const t = trackInfo(track);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -542,6 +543,16 @@ function Navbar({ view, setView, track, setTrack }) {
             <Newspaper size={14} />
             {cfg.articlesLabel}
           </button>
+          {access.granted && (
+            <button
+              onClick={() => go("my-profile")}
+              className="px-3 py-2 text-sm font-medium rounded-sm transition-colors flex items-center gap-1.5"
+              style={{ color: view.name === "my-profile" ? colors.ink : "#5B6472", backgroundColor: view.name === "my-profile" ? t.accentSoft : "transparent" }}
+            >
+              {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="" className="w-5 h-5 rounded-full object-cover" /> : <UserCircle size={14} />}
+              Mi ficha
+            </button>
+          )}
         </nav>
 
         <div className="flex items-center gap-2">
@@ -606,6 +617,16 @@ function Navbar({ view, setView, track, setTrack }) {
             <Newspaper size={14} />
             {cfg.articlesLabel}
           </button>
+          {access.granted && (
+            <button
+              onClick={() => go("my-profile")}
+              className="px-3 py-2 text-sm text-left rounded-sm flex items-center gap-2"
+              style={{ color: view.name === "my-profile" ? colors.ink : "#5B6472", backgroundColor: view.name === "my-profile" ? t.accentSoft : "transparent" }}
+            >
+              <UserCircle size={14} />
+              Mi ficha
+            </button>
+          )}
           <div className="flex items-center gap-1.5 pt-2 mt-1 border-t" style={{ borderColor: colors.line }}>
             {["civil", "military"].map((key) => {
               const opt = trackInfo(key);
@@ -4770,10 +4791,158 @@ function PlanBadge({ plan, planStartDate, colors, sans }) {
   );
 }
 
+// What the student sees about themselves: optional photo, contracted plan and
+// expiry, and progress in percentages. Never shows the teacher's private notes.
+function MyProfileView({ profile, track, exercises, submissions, onProfileChange }) {
+  const { cfg, colors, serif, sans, trackInfo } = useTheme();
+  const t = trackInfo(track);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+
+  async function handlePhoto(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const url = await api.uploadAvatar(file, profile.id);
+      await api.setMyAvatar(profile.id, url, profile.avatar_url || "");
+      onProfileChange({ ...profile, avatar_url: url });
+    } catch {
+      setMessage("No se pudo subir la foto. Prueba con otra imagen o inténtalo más tarde.");
+    }
+    setBusy(false);
+  }
+
+  async function removePhoto() {
+    setBusy(true);
+    setMessage("");
+    try {
+      await api.setMyAvatar(profile.id, "", profile.avatar_url || "");
+      onProfileChange({ ...profile, avatar_url: "" });
+    } catch {
+      setMessage("No se pudo quitar la foto.");
+    }
+    setBusy(false);
+  }
+
+  const plan = profile.plan || "individual";
+  const end = computePlanEndDate(plan, profile.plan_start_date);
+  const daysLeft = end ? Math.ceil((end.getTime() - Date.now()) / (1000 * 60 * 60 * 24)) : null;
+
+  const mine = submissions.filter((s) => s.userId === profile.id && s.track === track);
+  const pct = (list) => (list.length ? Math.round((list.reduce((acc, s) => acc + (s.total ? s.score / s.total : 0), 0) / list.length) * 100) : 0);
+  const rows = CATEGORY_KEYS.map((key) => {
+    const done = mine.filter((s) => s.exerciseType === key);
+    const available = exercises.filter((e) => e.type === key && e.track === track && matchesLevel(e.level, profile.level)).length;
+    return { key, done: done.length, available: Math.max(available, done.length), score: pct(done) };
+  });
+  const totalDone = rows.reduce((a, r) => a + r.done, 0);
+  const totalAvail = rows.reduce((a, r) => a + r.available, 0);
+  const completion = totalAvail ? Math.round((totalDone / totalAvail) * 100) : 0;
+
+  return (
+    <div className="max-w-3xl mx-auto px-6 py-12 space-y-10">
+      <div className="flex items-center gap-5 flex-wrap">
+        {profile.avatar_url ? (
+          <img src={profile.avatar_url} alt="" className="w-24 h-24 rounded-full object-cover border" style={{ borderColor: colors.line }} />
+        ) : (
+          <div className="w-24 h-24 rounded-full border flex items-center justify-center" style={{ borderColor: colors.line, color: "#5B6472" }}>
+            <UserCircle size={44} />
+          </div>
+        )}
+        <div className="min-w-0">
+          <h2 style={{ ...serif, color: colors.ink }} className="text-2xl font-semibold">{profile.name || "Mi ficha"}</h2>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm">{profile.email}</p>
+          <div className="flex items-center gap-3 mt-3 flex-wrap">
+            <label
+              className="inline-flex items-center gap-2 px-3 py-1.5 text-xs font-semibold rounded-sm cursor-pointer"
+              style={{ ...sans, backgroundColor: colors.ink, color: colors.bg, opacity: busy ? 0.5 : 1 }}
+            >
+              <ImageIcon size={13} />
+              {busy ? "Subiendo…" : profile.avatar_url ? "Cambiar foto" : "Añadir foto de perfil (opcional)"}
+              <input type="file" accept="image/*" onChange={handlePhoto} disabled={busy} className="hidden" />
+            </label>
+            {profile.avatar_url && (
+              <button type="button" onClick={removePhoto} disabled={busy} className="text-xs underline" style={{ ...sans, color: "#5B6472" }}>
+                Quitar foto
+              </button>
+            )}
+          </div>
+          {message && <p style={{ ...sans, color: colors.error }} className="text-xs mt-2">{message}</p>}
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold mb-3">Mi plan</h3>
+        <div className="p-5 border space-y-2" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+          <div style={{ ...sans, color: colors.ink }} className="text-base font-semibold">{PLAN_LABELS[plan] || plan}</div>
+          {plan === "individual" ? (
+            <p style={{ ...sans, color: "#5B6472" }} className="text-sm">Clases individuales: no tienen fecha de caducidad.</p>
+          ) : !profile.plan_start_date ? (
+            <p style={{ ...sans, color: "#5B6472" }} className="text-sm">Todavía no tienes fecha de inicio asignada.</p>
+          ) : (
+            <>
+              <p style={{ ...sans, color: "#5B6472" }} className="text-sm">
+                Inicio: {formatDate(new Date(profile.plan_start_date + "T00:00:00").toISOString())} · Vence: {formatDate(end.toISOString())}
+              </p>
+              <PlanBadge plan={plan} planStartDate={profile.plan_start_date} colors={colors} sans={sans} />
+              {daysLeft >= 0 && (
+                <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
+                  {daysLeft === 0 ? "Vence hoy." : `Te quedan ${daysLeft} día${daysLeft === 1 ? "" : "s"}.`}
+                </p>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      <div>
+        <h3 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold mb-1">Mi progreso — {t.label}</h3>
+        <p style={{ ...sans, color: "#5B6472" }} className="text-xs mb-4">
+          «Completado» es el porcentaje de ejercicios que has hecho sobre los disponibles. «Acierto» es la nota media de los que has hecho.
+        </p>
+        <div className="p-5 border mb-4" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <span style={{ ...sans, color: colors.ink }} className="text-sm font-semibold">Total completado</span>
+            <span style={{ ...serif, color: colors.ink }} className="text-3xl font-semibold">{completion}%</span>
+          </div>
+          <div className="h-2 mt-2 rounded-full" style={{ backgroundColor: colors.line }}>
+            <div className="h-full rounded-full" style={{ width: `${completion}%`, backgroundColor: t.accent }} />
+          </div>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2">
+            {totalDone} de {totalAvail} ejercicios{mine.length ? ` · acierto medio ${pct(mine)}%` : ""}
+          </p>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          {rows.map((r) => {
+            const done = r.available ? Math.round((r.done / r.available) * 100) : 0;
+            return (
+              <div key={r.key} className="p-4 border" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
+                <div className="flex items-baseline justify-between gap-2">
+                  <span style={{ ...sans, color: colors.ink }} className="text-sm font-medium">{cfg.categoryLabels[r.key]}</span>
+                  <span style={{ ...serif, color: colors.ink }} className="text-lg font-semibold">{done}%</span>
+                </div>
+                <div className="h-1.5 mt-2 rounded-full" style={{ backgroundColor: colors.line }}>
+                  <div className="h-full rounded-full" style={{ width: `${done}%`, backgroundColor: t.accent }} />
+                </div>
+                <p style={{ ...sans, color: "#5B6472" }} className="text-xs mt-2">
+                  {r.done} de {r.available} hechos{r.done ? ` · acierto ${r.score}%` : ""}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const MARITAL_OPTIONS = ["Soltero/a", "Casado/a", "Pareja de hecho", "Divorciado/a", "Viudo/a"];
 
 function emptyStudentNote() {
-  return { city: "", occupation: "", age: "", maritalStatus: "", hasChildren: "", childrenDetail: "", goal: "", comments: "" };
+  return { city: "", occupation: "", age: "", maritalStatus: "", hasChildren: "", childrenDetail: "", goal: "", comments: "", rank: "", destination: "", hasMilitaryColumns: false };
 }
 
 // Teacher-only file for one student: private notes + what they have done on the platform.
@@ -4783,6 +4952,9 @@ function StudentFicha({ user, submissions, exercises, onBack }) {
   const [loaded, setLoaded] = useState(false);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
+  // Civil / Militar tabs: military students also get rank and destination, and the
+  // progress below is shown for the area of the selected tab.
+  const [area, setArea] = useState(String(user.level || "").startsWith("SLP") ? "military" : "civil");
 
   useEffect(() => {
     let cancelled = false;
@@ -4823,13 +4995,16 @@ function StudentFicha({ user, submissions, exercises, onBack }) {
   }
 
   const mine = useMemo(
-    () => submissions.filter((s) => s.userId === user.id).sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
-    [submissions, user.id]
+    () =>
+      submissions
+        .filter((s) => s.userId === user.id && s.track === area)
+        .sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt)),
+    [submissions, user.id, area]
   );
   const pct = (list) => (list.length ? Math.round((list.reduce((acc, s) => acc + (s.total ? s.score / s.total : 0), 0) / list.length) * 100) : 0);
   const byCategory = CATEGORY_KEYS.map((key) => {
     const done = mine.filter((s) => s.exerciseType === key);
-    const available = exercises.filter((e) => e.type === key && matchesLevel(e.level, user.level)).length;
+    const available = exercises.filter((e) => e.type === key && e.track === area && matchesLevel(e.level, user.level)).length;
     return { key, done, available };
   });
   const field = "mt-1 w-full border px-3 py-2 text-sm";
@@ -4841,12 +5016,35 @@ function StudentFicha({ user, submissions, exercises, onBack }) {
         <ChevronLeft size={16} /> Volver a la lista de alumnos
       </button>
 
-      <div>
+      <div className="flex items-center gap-4">
+        {user.avatarUrl ? (
+          <img src={user.avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover border" style={{ borderColor: cfg.colors.line }} />
+        ) : (
+          <div className="w-16 h-16 rounded-full border flex items-center justify-center" style={{ borderColor: cfg.colors.line, color: "#5B6472" }}>
+            <UserCircle size={30} />
+          </div>
+        )}
+        <div className="min-w-0">
         <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-xl font-semibold">{user.name || "(sin nombre)"}</h4>
         <p style={{ ...sans, color: "#5B6472" }} className="text-sm">
           {user.email} · {user.status === "approved" ? "Aprobado" : user.status === "rejected" ? "Rechazado" : "Pendiente"}
           {user.level ? ` · Nivel ${user.level}` : ""} · Se apuntó el {formatDate(user.createdAt)}
         </p>
+        </div>
+      </div>
+
+      <div className="flex gap-1 border-b" style={{ borderColor: cfg.colors.line }}>
+        {[["civil", "Civil"], ["military", "Militar"]].map(([key, label]) => (
+          <button
+            key={key}
+            type="button"
+            onClick={() => setArea(key)}
+            className="px-4 py-2 text-sm font-medium border-b-2 -mb-px"
+            style={{ ...sans, borderColor: area === key ? cfg.colors.ink : "transparent", color: area === key ? cfg.colors.ink : "#5B6472" }}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       <form onSubmit={handleSave} className="space-y-4 p-4 border" style={{ ...line, backgroundColor: cfg.colors.card }}>
@@ -4861,6 +5059,18 @@ function StudentFicha({ user, submissions, exercises, onBack }) {
         ) : (
           <>
             <div className="grid sm:grid-cols-2 gap-3">
+              {area === "military" && (
+                <>
+                  <label className="text-sm block" style={sans}>
+                    Rango
+                    <input value={note.rank} onChange={(e) => setField("rank", e.target.value)} placeholder="Ej. Cabo, Teniente…" className={field} style={line} />
+                  </label>
+                  <label className="text-sm block" style={sans}>
+                    Destino
+                    <input value={note.destination} onChange={(e) => setField("destination", e.target.value)} placeholder="Ej. Base Aérea de Getafe" className={field} style={line} />
+                  </label>
+                </>
+              )}
               <label className="text-sm block" style={sans}>
                 Ciudad de donde viene
                 <input value={note.city} onChange={(e) => setField("city", e.target.value)} className={field} style={line} />
@@ -4913,9 +5123,11 @@ function StudentFicha({ user, submissions, exercises, onBack }) {
       </form>
 
       <div className="space-y-4">
-        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold">Progreso en la plataforma</h4>
+        <h4 style={{ ...serif, color: cfg.colors.ink }} className="text-base font-semibold">
+          Progreso en la plataforma — {area === "military" ? "Militar" : "Civil"}
+        </h4>
         {mine.length === 0 ? (
-          <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no ha completado ningún ejercicio.</p>
+          <p style={{ ...sans, color: "#5B6472" }} className="text-sm italic">Todavía no ha completado ningún ejercicio en el área {area === "military" ? "militar" : "civil"}.</p>
         ) : (
           <>
             <p style={{ ...sans, color: cfg.colors.ink }} className="text-sm">
@@ -6342,6 +6554,10 @@ export default function App() {
       ) : (
         <PublicHome exercises={exercises} articles={articles} reviews={reviews} setView={setView} track={track} />
       );
+  } else if (view.name === "my-profile") {
+    content = profile ? (
+      <MyProfileView profile={profile} track={track} exercises={exercises} submissions={submissions} onProfileChange={setProfile} />
+    ) : null;
   } else if (view.name === "access") {
     // Reached from any "sign in to open this" prompt; the gate below shows the
     // sign-up / login / pending screen and lets approved students through.
@@ -6451,7 +6667,7 @@ export default function App() {
   return (
     <ThemeContext.Provider value={theme}>
       <div className="min-h-screen" style={{ backgroundColor: cfg.colors.bg, ...theme.sans }}>
-        <Navbar view={view} setView={setView} track={track} setTrack={setTrack} />
+        <Navbar view={view} setView={setView} track={track} setTrack={setTrack} currentUser={profile} />
         <ErrorBoundary key={boundaryKey} onRecover={recoverFromError}>
           {gatedContent}
         </ErrorBoundary>

@@ -13,7 +13,8 @@ create table if not exists profiles (
   created_at timestamptz not null default now(),
   plan text not null default 'individual' check (plan in ('individual','3months','6months')),
   plan_start_date date,
-  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4'))
+  level text check (level is null or level in ('A2','B1','B2','C1','SLP1','SLP2','SLP3','SLP4')),
+  avatar_url text default ''
 );
 
 create table if not exists exercises (
@@ -83,6 +84,8 @@ create table if not exists student_notes (
   children_detail text default '',
   goal text default '',
   comments text default '',
+  rank text default '',
+  destination text default '',
   updated_at timestamptz not null default now()
 );
 
@@ -353,6 +356,15 @@ create policy "media: admin updates" on storage.objects for update
   using (bucket_id = 'media' and public.is_admin());
 create policy "media: admin deletes" on storage.objects for delete
   using (bucket_id = 'media' and public.is_admin());
+
+-- Approved students may upload / remove only their own profile photo
+-- (avatars/<their user id>/...).
+create policy "media: students upload own avatar" on storage.objects for insert
+  with check (bucket_id = 'media' and (storage.foldername(name))[1] = 'avatars'
+              and (storage.foldername(name))[2] = auth.uid()::text and public.is_approved());
+create policy "media: students delete own avatar" on storage.objects for delete
+  using (bucket_id = 'media' and (storage.foldername(name))[1] = 'avatars'
+         and (storage.foldername(name))[2] = auth.uid()::text);
 
 -- ------------------------------------------------------------------
 -- Bootstrap the singleton site_config row

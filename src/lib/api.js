@@ -60,6 +60,7 @@ function rowToProfile(r) {
     plan: r.plan,
     planStartDate: r.plan_start_date,
     level: r.level || "",
+    avatarUrl: r.avatar_url || "",
   };
 }
 
@@ -81,6 +82,10 @@ function rowToStudentNote(r) {
     childrenDetail: r.children_detail || "",
     goal: r.goal || "",
     comments: r.comments || "",
+    rank: r.rank || "",
+    destination: r.destination || "",
+    // True when the military columns exist in the database (SQL already run).
+    hasMilitaryColumns: "rank" in r,
     updatedAt: r.updated_at || null,
   };
 }
@@ -104,9 +109,56 @@ export async function saveStudentNote(userId, n) {
     comments: n.comments,
     updated_at: new Date().toISOString(),
   };
+  // Rank and destination are only sent when the columns exist or something is typed,
+  // so saving keeps working before that SQL has been run.
+  if (n.hasMilitaryColumns || (n.rank || "").trim() || (n.destination || "").trim()) {
+    row.rank = (n.rank || "").trim();
+    row.destination = (n.destination || "").trim();
+  }
   const { data, error } = await supabase.from("student_notes").upsert(row, { onConflict: "user_id" }).select().single();
   if (error) throw error;
   return rowToStudentNote(data);
+}
+
+// Student profile photo: shrunk to a small square so it loads fast, stored under
+// avatars/<user id>/ in the public "media" bucket (students may only write there).
+function squareAvatarBlob(file, size = 256) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const side = Math.min(img.width, img.height);
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      canvas.getContext("2d").drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, size, size);
+      URL.revokeObjectURL(url);
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No se pudo preparar la imagen."))), "image/jpeg", 0.85);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("No se pudo leer la imagen."));
+    };
+    img.src = url;
+  });
+}
+
+export async function uploadAvatar(file, userId) {
+  const blob = await squareAvatarBlob(file);
+  const path = `avatars/${userId}/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage.from("media").upload(path, blob, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
+  if (error) throw error;
+  return supabase.storage.from("media").getPublicUrl(path).data.publicUrl;
+}
+
+export async function setMyAvatar(userId, url, previousUrl = "") {
+  const { error } = await supabase.from("profiles").update({ avatar_url: url }).eq("id", userId);
+  if (error) throw error;
+  // Best effort: remove the old picture so the bucket doesn't fill up.
+  const marker = "/media/";
+  if (previousUrl && previousUrl.includes(marker)) {
+    await supabase.storage.from("media").remove([previousUrl.split(marker)[1]]).catch(() => {});
+  }
 }
 
 export async function updateProfileStatus(id, status) {
