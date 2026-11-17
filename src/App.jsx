@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, Component } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext, Component, Fragment } from "react";
 import {
   BookOpen,
   Headphones,
@@ -296,7 +296,7 @@ const CAMBRIDGE_EXAMS = {
       camPart("listening", "Listening", 1, "Multiple choice", "listening"),
       camPart("listening", "Listening", 2, "Sentence completion", "listening", "text"),
       camPart("listening", "Listening", 3, "Multiple choice", "listening"),
-      camPart("listening", "Listening", 4, "Multiple matching", "listening"),
+      camPart("listening", "Listening", 4, "Multiple matching (2 tareas por hablante)", "listening", "dual"),
     ],
   },
 };
@@ -304,6 +304,7 @@ const CAMBRIDGE_LEVELS = Object.keys(CAMBRIDGE_EXAMS);
 const CAM_KIND_HINT = {
   choice: "Opción múltiple (A, B, C…)",
   text: "El alumno escribe la respuesta · se corrige sola",
+  dual: "Cada hablante tiene 2 preguntas (bloque 1 y bloque 2) con el mismo audio",
   none: "Enunciado de la redacción · el alumno la entrega como indiques",
 };
 
@@ -1758,7 +1759,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         </div>
       )}
 
-      {exercise.type === "listening" && (
+      {exercise.type === "listening" && (exercise.audioUrl || exercise.passage?.trim() || !displayQuestions.some((q) => q.audioUrl)) && (
         <div className="p-5 mb-8 border flex flex-col items-start gap-3" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
           {exercise.audioUrl ? (
             <audio controls src={exercise.audioUrl} className="w-full" />
@@ -1801,6 +1802,12 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
         <div>
           {exampleQ && <ExampleBlock q={exampleQ} />}
           {displayQuestions.map((q, i) => (
+            <Fragment key={q.id}>
+              {q.speaker && (i === 0 || displayQuestions[i - 1].speaker !== q.speaker) && (
+                <h4 style={{ ...serif, color: colors.ink }} className="text-lg font-semibold mb-3">
+                  Speaker {q.speaker}
+                </h4>
+              )}
             <QuestionBlock
               key={q.id}
               q={q}
@@ -1812,6 +1819,7 @@ function ExerciseDetail({ exercise, setView, track, currentUser, priorSubmission
               anchorId={examMode ? `q-${exercise.id}-${i}` : undefined}
               showContext={i === 0 || questionContextKey(q) !== questionContextKey(displayQuestions[i - 1])}
             />
+            </Fragment>
           ))}
           {total > 0 && (!examMode || finished) && (
             <div className="mt-4 p-4 border flex items-center justify-between" style={{ borderColor: colors.line, backgroundColor: colors.card }}>
@@ -2396,13 +2404,70 @@ function emptyForm(type = "grammar", track = "civil") {
   return { type, track, title: "", level: LEVELS_BY_TRACK[track][0], part: "", durationMinutes: "", instructions: "", passage: "", minWords: 60, audioUrl: "", theoryFileUrl: "", theoryFileName: "", icon: "", example: { question: "", answer: "" }, questions: [EMPTY_QUESTION()] };
 }
 
+// Cambridge "two tasks per speaker" (CAE Listening Part 4): each speaker is two
+// ordinary questions that share one audio. They are linked by a common group id and
+// carry the speaker number and block (1 or 2), so scoring and correction are unchanged.
+function newSpeakerPair(n) {
+  const group = uid();
+  return [
+    { ...EMPTY_QUESTION("choice"), group, speaker: n, block: 1 },
+    { ...EMPTY_QUESTION("choice"), group, speaker: n, block: 2 },
+  ];
+}
+
+function renumberSpeakers(questions) {
+  const order = [];
+  return questions.map((q) => {
+    if (!q.speaker) return q;
+    if (!order.includes(q.group)) order.push(q.group);
+    return { ...q, speaker: order.indexOf(q.group) + 1 };
+  });
+}
+
+// Turns pasted questions into speakers: questions under the same "Audio N" line are
+// one speaker; without audio lines they are paired 1+2, 3+4…
+function pairAsSpeakers(result) {
+  const { questions, issues, ignored } = result;
+  const buckets = [];
+  const byGroup = new Map();
+  let open = null;
+  questions.forEach((q, i) => {
+    if (q.group) {
+      if (!byGroup.has(q.group)) {
+        const b = [];
+        byGroup.set(q.group, b);
+        buckets.push(b);
+      }
+      byGroup.get(q.group).push(i);
+      open = null;
+    } else {
+      if (!open || open.length >= 2) {
+        open = [];
+        buckets.push(open);
+      }
+      open.push(i);
+    }
+  });
+  const outQuestions = [];
+  const outIssues = [];
+  buckets.forEach((idxs, bi) => {
+    const group = uid();
+    idxs.forEach((i, pos) => {
+      outQuestions.push({ ...questions[i], group, speaker: bi + 1, block: pos + 1 });
+      const extra = idxs.length === 2 ? [] : [`El hablante ${bi + 1} tiene ${idxs.length} pregunta${idxs.length === 1 ? "" : "s"}; deben ser 2`];
+      outIssues.push([...(issues[i] || []), ...extra]);
+    });
+  });
+  return { questions: outQuestions, issues: outIssues, ignored };
+}
+
 function blankCambridgeForm(level, part, existingCount) {
   return {
     ...emptyForm(part.type, "civil"),
     level,
     part: part.key,
     title: `${part.label} – Ejercicio ${existingCount + 1}`,
-    questions: part.kind === "none" ? [] : [EMPTY_QUESTION(part.kind)],
+    questions: part.kind === "none" ? [] : part.kind === "dual" ? newSpeakerPair(1) : [EMPTY_QUESTION(part.kind)],
   };
 }
 
@@ -3134,6 +3199,7 @@ function ContentTab({ exercises, setExercises, track }) {
   const isCam = mode === "cambridge";
   const partDef = isCam ? camPartOf(cExam, cPartKey) : form.part ? camPartOf(form.level, form.part) : null;
   const defaultKind = partDef?.kind === "text" ? "text" : "choice";
+  const isDual = partDef?.kind === "dual";
 
   function openCambridge(exam, partKey, exerciseId, excludeId) {
     const p = camPartOf(exam, partKey);
@@ -3221,7 +3287,7 @@ function ContentTab({ exercises, setExercises, track }) {
           ...f,
           questions: f.questions.map((q, i) => {
             if (i === qIndex) return { ...q, audioUrl: url };
-            const sameGroup = target.group && q.group === target.group && !q.audioUrl;
+            const sameGroup = target.group && q.group === target.group && (target.speaker || !q.audioUrl);
             return sameGroup ? { ...q, audioUrl: url } : q;
           }),
         };
@@ -3255,7 +3321,17 @@ function ContentTab({ exercises, setExercises, track }) {
     setForm((f) => { const questions = [...f.questions]; const options = [...questions[qIndex].options]; options[optIndex] = value; questions[qIndex] = { ...questions[qIndex], options }; return { ...f, questions }; });
   }
   function addQuestion() { setForm((f) => ({ ...f, questions: [...f.questions, EMPTY_QUESTION(defaultKind)] })); }
-  function removeQuestion(qIndex) { setForm((f) => ({ ...f, questions: f.questions.filter((_, i) => i !== qIndex) })); }
+  function addSpeaker() {
+    setForm((f) => ({ ...f, questions: renumberSpeakers([...f.questions, ...newSpeakerPair(f.questions.length + 1)]) }));
+  }
+  // Removing one block of a speaker removes the whole speaker (both blocks).
+  function removeQuestion(qIndex) {
+    setForm((f) => {
+      const target = f.questions[qIndex];
+      const kept = f.questions.filter((q, i) => (target.speaker && target.group ? q.group !== target.group : i !== qIndex));
+      return { ...f, questions: renumberSpeakers(kept) };
+    });
+  }
   function addOption(qIndex) {
     setForm((f) => {
       const questions = [...f.questions];
@@ -3289,7 +3365,11 @@ function ContentTab({ exercises, setExercises, track }) {
   }
 
   const bulkKind = defaultKind;
-  const bulkResult = useMemo(() => (bulkText.trim() ? parseBulk(bulkText, form.type, bulkKind) : null), [bulkText, form.type, bulkKind]);
+  const bulkResult = useMemo(() => {
+    if (!bulkText.trim()) return null;
+    const parsed = parseBulk(bulkText, form.type, bulkKind);
+    return isDual ? pairAsSpeakers(parsed) : parsed;
+  }, [bulkText, form.type, bulkKind, isDual]);
 
   function applyBulk(replace) {
     const parsed = bulkResult?.questions || [];
@@ -3299,7 +3379,7 @@ function ContentTab({ exercises, setExercises, track }) {
     }
     setForm((f) => {
       const base = replace ? [] : f.questions.filter((q) => q.question.trim() || q.options.some((o) => o.trim()) || (q.answers || []).some((a) => a.trim()));
-      return { ...f, questions: [...base, ...parsed] };
+      return { ...f, questions: isDual ? renumberSpeakers([...base, ...parsed]) : [...base, ...parsed] };
     });
     setBulkMessage(`Se han añadido ${parsed.length} preguntas. Revísalas más abajo antes de publicar.`);
     setBulkText("");
@@ -3626,8 +3706,8 @@ function ContentTab({ exercises, setExercises, track }) {
                   <button type="button" onClick={() => setBulkOpen((s) => !s)} className="text-xs font-semibold underline" style={{ ...sans, color: "#5B6472" }}>
                     {bulkOpen ? "Ocultar pegado en bloque" : "Pegar muchas preguntas a la vez"}
                   </button>
-                  <button type="button" onClick={addQuestion} className="flex items-center gap-1 text-xs font-semibold" style={{ ...sans, color: trackInfo(form.track).accent }}>
-                    <Plus size={14} /> Añadir pregunta
+                  <button type="button" onClick={isDual ? addSpeaker : addQuestion} className="flex items-center gap-1 text-xs font-semibold" style={{ ...sans, color: trackInfo(form.track).accent }}>
+                    <Plus size={14} /> {isDual ? "Añadir hablante (2 bloques)" : "Añadir pregunta"}
                   </button>
                 </div>
               </div>
@@ -3670,6 +3750,14 @@ function ContentTab({ exercises, setExercises, track }) {
                         en una pregunta del grupo y se aplicará a todas las del mismo grupo.
                       </li>
                     )}
+                    {isDual && (
+                      <li>
+                        <strong>Esta parte: 2 preguntas por hablante.</strong> Escribe <code>Audio 1</code> y debajo las 2 preguntas de ese
+                        hablante (bloque 1 y bloque 2, cada una con sus opciones y su respuesta). Después <code>Audio 2</code> con las 2
+                        siguientes, y así. Sin líneas de <code>Audio</code> se emparejan de 2 en 2. Si quieres que se vea el número real
+                        de la pregunta (por ejemplo 23 y 28), escribe solo ese número como enunciado.
+                      </li>
+                    )}
                   </ul>
                   )}
                   <div className="flex items-center gap-3">
@@ -3704,7 +3792,12 @@ function ContentTab({ exercises, setExercises, track }) {
               )}
 
               {form.questions.map((q, qi) => (
-                <div key={q.id} className="p-4 border space-y-2" style={{ borderColor: cfg.colors.line }}>
+                <div key={q.id} className={`p-4 border space-y-2 ${q.speaker && q.block === 2 ? "ml-5" : ""}`} style={{ borderColor: cfg.colors.line }}>
+                  {q.speaker ? (
+                    <div style={{ ...sans, color: cfg.colors.ink }} className="text-xs font-semibold uppercase tracking-wider">
+                      Hablante {q.speaker} · Bloque {q.block}
+                    </div>
+                  ) : null}
                   {form.type === "reading" && (
                     <label className="text-xs block" style={sans}>
                       Texto de esta pregunta (opcional — si cada pregunta tiene su propio texto de lectura)
@@ -3718,9 +3811,13 @@ function ContentTab({ exercises, setExercises, track }) {
                       />
                     </label>
                   )}
-                  {form.type === "listening" && (
+                  {form.type === "listening" && q.speaker && q.block === 2 ? (
+                    <p style={{ ...sans, color: "#5B6472" }} className="text-xs">
+                      Usa el mismo audio que el bloque 1 de este hablante{q.audioUrl ? "." : " (súbelo en el bloque 1)."}
+                    </p>
+                  ) : form.type === "listening" && (
                     <div className="text-xs" style={sans}>
-                      Audio de esta pregunta (opcional){q.group ? ` — pertenece al grupo ${q.group}: al subirlo se aplica a las demás preguntas del grupo` : " — si cada pregunta tiene su propia grabación"}
+                      {q.speaker ? `Audio del hablante ${q.speaker} (sirve para sus 2 bloques)` : `Audio de esta pregunta (opcional)${q.group ? " — pertenece a un grupo: al subirlo se aplica a las demás preguntas del grupo" : " — si cada pregunta tiene su propia grabación"}`}
                       <div className="mt-1 flex items-center gap-3 flex-wrap">
                         <label
                           className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-sm cursor-pointer w-fit"
@@ -3774,8 +3871,8 @@ function ContentTab({ exercises, setExercises, track }) {
                     ) : (
                       <input value={q.question} onChange={(e) => updateQuestion(qi, "question", e.target.value)} placeholder={`Pregunta ${qi + 1} (déjalo vacío para que solo salga el número)`} className="flex-1 border px-3 py-2 text-sm" style={{ borderColor: cfg.colors.line }} />
                     )}
-                    {form.questions.length > 1 && (
-                      <button type="button" onClick={() => removeQuestion(qi)} style={{ color: cfg.colors.error }} className="mt-2"><Trash2 size={16} /></button>
+                    {form.questions.length > 1 && !(q.speaker && q.block === 2) && (
+                      <button type="button" onClick={() => removeQuestion(qi)} style={{ color: cfg.colors.error }} className="mt-2" title={q.speaker ? "Quitar este hablante (los 2 bloques)" : "Quitar pregunta"}><Trash2 size={16} /></button>
                     )}
                   </div>
                   {q.kind === "text" ? (
